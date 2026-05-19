@@ -14,7 +14,7 @@ from pathlib import Path
 PROJECT_DIR = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(PROJECT_DIR))
 
-from fastapi import FastAPI, Request, Query
+from fastapi import FastAPI, HTTPException, Request, Query
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -24,6 +24,8 @@ from macro_collector.db import (
     init_db,
     get_digests,
     get_digest,
+    get_topics_by_date,
+    get_article_by_id,
     get_articles_by_date,
     get_limitup_records,
     get_limitup_dates,
@@ -31,6 +33,8 @@ from macro_collector.db import (
     search_articles,
     search_limitup,
 )
+from macro_collector.frontend.markdown_render import render_markdown_html
+from macro_collector.frontend.preview import plain_digest_preview
 
 app = FastAPI(title="宏观资产配置日报")
 
@@ -48,10 +52,29 @@ def startup():
 def index(request: Request):
     """首页——摘要时间线"""
     digests = get_digests(limit=30)
+    for d in digests:
+        d["preview_plain"] = plain_digest_preview(d.get("preview") or "")
     return templates.TemplateResponse(
         request,
         "index.html",
         {"digests": digests},
+    )
+
+
+@app.get("/article/{article_id}", response_class=HTMLResponse)
+def article_detail(request: Request, article_id: int):
+    """单篇文章详情（站内阅读）"""
+    article = get_article_by_id(article_id)
+    if not article:
+        raise HTTPException(status_code=404, detail="文章不存在")
+    collected = (article.get("collected_at") or "")[:10]
+    return templates.TemplateResponse(
+        request,
+        "article.html",
+        {
+            "article": article,
+            "focus_date": collected,
+        },
     )
 
 
@@ -64,8 +87,12 @@ def digest_detail(request: Request, date_str: str):
     themes = get_theme_heat(date_str)
 
     summary = ""
+    summary_html = ""
     if digest:
         summary = digest.get("summary", "")
+        summary_html = render_markdown_html(summary)
+
+    topics = get_topics_by_date(date_str)
 
     return templates.TemplateResponse(
         request,
@@ -76,7 +103,9 @@ def digest_detail(request: Request, date_str: str):
             "articles": articles,
             "limitups": limitups,
             "themes": themes,
+            "topics": topics,
             "summary": summary,
+            "summary_html": summary_html,
             "focus_date": date_str,
         },
     )
@@ -134,6 +163,11 @@ def search_page(
     )
 
 
+@app.get("/health")
+def health():
+    return {"status": "ok", "service": "macro-collector"}
+
+
 @app.get("/api/digests")
 def api_digests():
     return get_digests(limit=30)
@@ -148,7 +182,9 @@ def api_limitup(date_str: str):
 
 
 def main():
-    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
+    from macro_collector.service import server_host, server_port, start_server
+
+    start_server(host=server_host(), port=server_port(), foreground=True)
 
 
 if __name__ == "__main__":

@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 from typing import Iterable, Optional
 
-from macro_collector.db import init_db, store_article, store_digest
+from macro_collector.db import init_db, store_article, store_digest, store_topics
 from macro_collector.models import Article, friendly_source
 
 
@@ -56,3 +56,11 @@ def persist_digest(target_date: str, markdown: str, raw_path: Optional[str] = No
     """把摘要 Markdown 写入 digests 表，raw_data 记录原始 JSON 路径以便溯源。"""
     init_db()
     store_digest(target_date, markdown, raw_data=raw_path or "")
+
+
+def persist_topics(target_date: str, topics: list[dict]) -> int:
+    """将结构化议题写入 topics 表。"""
+    init_db()
+    if not topics:
+        return 0
+    return store_topics(target_date, topics)

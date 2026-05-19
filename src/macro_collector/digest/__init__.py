@@ -6,5 +6,12 @@
 
 from macro_collector.digest.dedup import dedup_articles
 from macro_collector.digest.generator import format_for_llm, load_raw_data, save_digest
+from macro_collector.digest.llm import generate_digest_via_llm
 
-__all__ = ["dedup_articles", "format_for_llm", "load_raw_data", "save_digest"]
+__all__ = [
+    "dedup_articles",
+    "format_for_llm",
+    "generate_digest_via_llm",
+    "load_raw_data",
+    "save_digest",
+]

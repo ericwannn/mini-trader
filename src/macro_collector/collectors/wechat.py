@@ -10,6 +10,7 @@ from typing import Optional
 import requests
 
 from macro_collector.collectors.base import BaseCollector
+from macro_collector.config import wechat_cookie, wechat_proxy
 from macro_collector.models import Article
 from macro_collector.utils import make_session, gentle_delay
 
@@ -41,6 +42,12 @@ class WeChatCollector(BaseCollector):
         self._per_keyword = per_keyword
         self._max_total = max_total
         self.session = make_session()
+        proxy = wechat_proxy()
+        if proxy:
+            self.session.proxies.update({"http": proxy, "https": proxy})
+        cookie = wechat_cookie()
+        if cookie:
+            self.session.headers["Cookie"] = cookie
         # warmup
         try:
             self.session.get("https://weixin.sogou.com/", timeout=8)
@@ -61,7 +68,11 @@ class WeChatCollector(BaseCollector):
             return []
 
         if "验证码" in r.text or "checkcode" in r.text.lower():
-            print(f"  ⚠️ 触发验证码 (搜索词: {keyword})")
+            print(f"  ⚠️ 搜狗微信触发验证码 (关键词: {keyword})")
+            print(
+                "     可在项目根目录 .env 中配置 MACRO_WECHAT_COOKIE / MACRO_WECHAT_PROXY 后重试；"
+                "或设置 MACRO_WECHAT_ENABLED=0 跳过微信源。详见 README。"
+            )
             return []
 
         raw_articles = re.findall(

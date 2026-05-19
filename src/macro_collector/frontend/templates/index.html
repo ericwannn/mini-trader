@@ -16,15 +16,41 @@
         .card { background: #fff; border-radius: 12px; padding: 20px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
         .card h2 { font-size: 16px; color: #1a1a2e; margin-bottom: 12px; border-left: 3px solid #4a6cf7; padding-left: 10px; }
         .digest-list { list-style: none; }
-        .digest-item { padding: 12px 0; border-bottom: 1px solid #eee; }
+        .digest-item { padding: 0; border-bottom: 1px solid #eee; }
         .digest-item:last-child { border-bottom: none; }
-        .digest-item a { color: #4a6cf7; text-decoration: none; font-size: 15px; }
-        .digest-item a:hover { text-decoration: underline; }
+        .digest-item-link {
+            display: block;
+            padding: 12px 8px;
+            margin: 0 -8px;
+            border-radius: 8px;
+            text-decoration: none;
+            color: inherit;
+            transition: background 0.15s;
+        }
+        .digest-item-link:hover { background: #f5f8ff; }
+        .digest-item-link .digest-date { color: #4a6cf7; font-size: 15px; font-weight: 600; }
+        .digest-item-link:hover .digest-date { text-decoration: underline; }
         .digest-meta { font-size: 12px; color: #999; margin-top: 4px; }
-        .summary-preview { font-size: 13px; color: #666; margin-top: 8px; max-height: 80px; overflow: hidden; }
+        .summary-preview { font-size: 13px; color: #666; margin-top: 8px; line-height: 1.5; }
+        .article-item-link { color: #1a1a2e; text-decoration: none; font-size: 15px; font-weight: 500; }
+        .article-item-link:hover { color: #4a6cf7; text-decoration: underline; }
+        .article-ext { font-size: 12px; margin-left: 8px; color: #4a6cf7; }
+        .topic-card h3 a { color: #1a1a2e; text-decoration: none; }
+        .topic-card h3 a:hover { color: #4a6cf7; text-decoration: underline; }
         .tag { display: inline-block; background: #e8f0fe; color: #4a6cf7; padding: 2px 8px; border-radius: 4px; font-size: 12px; margin: 2px; }
         .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
         @media (max-width: 768px) { .grid-2 { grid-template-columns: 1fr; } }
+        .markdown-body { font-size: 14px; line-height: 1.8; color: #333; }
+        .markdown-body h1 { font-size: 22px; margin: 16px 0 12px; }
+        .markdown-body h2 { font-size: 18px; margin: 20px 0 10px; color: #1a1a2e; border-bottom: 1px solid #eee; padding-bottom: 6px; }
+        .markdown-body h3 { font-size: 15px; margin: 14px 0 8px; }
+        .markdown-body ul { margin: 8px 0 8px 20px; }
+        .markdown-body a { color: #4a6cf7; }
+        .markdown-body hr { border: none; border-top: 1px solid #eee; margin: 16px 0; }
+        .topic-card { border: 1px solid #eee; border-radius: 8px; padding: 12px 14px; margin-bottom: 10px; }
+        .topic-card h3 { font-size: 14px; margin-bottom: 8px; color: #1a1a2e; }
+        .topic-meta { font-size: 12px; color: #666; margin: 4px 0; }
+        .topic-logic { font-size: 13px; color: #444; margin-top: 8px; white-space: pre-wrap; }
     </style>
 </head>
 <body>
@@ -37,10 +63,42 @@
 
     <div class="container">
         {% if focus_date and digest %}
+        {% if topics %}
+        <div class="card">
+            <h2>{{ focus_date }} 结构化议题 ({{ topics|length }})</h2>
+            {% for t in topics %}
+            <div class="topic-card">
+                <h3>
+                    {{ t.keyword }}
+                    {% if t.related_articles_list and t.related_articles_list[0].title %}
+                    — {% set ra0 = t.related_articles_list[0] %}
+                    {% if ra0.url and ra0.url != '#' %}
+                    <a href="{{ ra0.url }}" target="_blank" rel="noopener noreferrer">{{ ra0.title[:50] }}</a>
+                    {% else %}
+                    {{ ra0.title[:50] }}
+                    {% endif %}
+                    {% endif %}
+                </h3>
+                <div class="topic-meta">
+                    {% if t.direction %}<span class="tag">{{ t.direction }}</span>{% endif %}
+                    {% if t.forecast_cycle %}<span class="tag">{{ t.forecast_cycle }}</span>{% endif %}
+                    {% if t.instruments %}<span>{{ t.instruments }}</span>{% endif %}
+                </div>
+                {% if t.logic %}<div class="topic-logic">{{ t.logic }}</div>{% endif %}
+                {% for ra in t.related_articles_list %}
+                {% if ra.url and ra.url != '#' %}
+                <div class="topic-meta"><a href="{{ ra.url }}" target="_blank" rel="noopener noreferrer">原文链接</a></div>
+                {% endif %}
+                {% endfor %}
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
         <div class="card">
             <h2>{{ focus_date }} 宏观摘要</h2>
-            <div style="white-space: pre-wrap; font-size: 14px; line-height: 1.8;">
-                {{- summary -}}
+            <div class="markdown-body">
+                {{ summary_html|safe }}
             </div>
         </div>
 
@@ -71,7 +129,10 @@
             <ul class="digest-list">
             {% for a in articles %}
                 <li class="digest-item">
-                    <a href="{{ a.url or '#' }}" target="_blank">{{ a.title }}</a>
+                    <a class="article-item-link" href="/article/{{ a.id }}">{{ a.title }}</a>
+                    {% if a.url and a.url != '#' %}
+                    <a class="article-ext" href="{{ a.url }}" target="_blank" rel="noopener noreferrer">原文 ↗</a>
+                    {% endif %}
                     <div class="digest-meta">{{ a.source }} · {{ a.collected_at[:10] }}</div>
                 </li>
             {% endfor %}
@@ -86,9 +147,11 @@
                 <ul class="digest-list">
                 {% for d in digests %}
                     <li class="digest-item">
-                        <a href="/digest/{{ d.date }}">{{ d.date }}</a>
-                        <div class="digest-meta">{{ d.created_at[:16] if d.created_at else "" }}</div>
-                        <div class="summary-preview">{{ d.preview }}...</div>
+                        <a class="digest-item-link" href="/digest/{{ d.date }}">
+                            <div class="digest-date">{{ d.date }} 摘要</div>
+                            <div class="digest-meta">{{ d.created_at[:16] if d.created_at else "" }}</div>
+                            <div class="summary-preview">{{ d.preview_plain or d.preview }}</div>
+                        </a>
                     </li>
                 {% endfor %}
                 </ul>

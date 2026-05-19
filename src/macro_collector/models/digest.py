@@ -173,8 +173,9 @@ def _format_article_block(a: Article) -> str:
     url = ((a.url or "").strip() or "#")
     summary_raw = (a.content or "").strip()
     summary = summary_raw[:200].replace("\n", " ") if summary_raw else "(无正文摘要)"
+    title_md = f"[{a.title}]({url})" if url and url != "#" else a.title
     lines = [
-        f"### 文章: {a.title}",
+        f"### {title_md}",
         f"- **来源**: {account} | [原文链接]({url})",
         f"- **内容摘要**: {summary}",
         f"- **涉及品种**: {_extract_varieties(a)}",
@@ -221,6 +222,96 @@ def generate_digest_markdown(articles: list[Article], target_date: str) -> str:
         parts.append("---")
         parts.append("")
     return "\n".join(parts).rstrip() + "\n"
+
+
+def extract_topics_from_articles(
+    articles: list[Article], target_date: str
+) -> list[dict[str, str]]:
+    """从文章列表提取结构化议题行（与 Markdown 摘要字段一致）。"""
+    buckets = _bucket_by_topics(articles)
+    records: list[dict[str, str]] = []
+
+    def _append_for_topic(topic_name: str, arts: list[Article]) -> None:
+        for a in _dedupe_articles(arts):
+            related = json.dumps(
+                [{"title": a.title, "url": (a.url or "").strip() or "#"}],
+                ensure_ascii=False,
+            )
+            records.append(
+                {
+                    "digest_date": target_date,
+                    "keyword": topic_name,
+                    "instruments": _extract_varieties(a),
+                    "direction": _direction_judgement(a),
+                    "forecast_cycle": _horizon(a),
+                    "logic": _logic_chain(a),
+                    "related_articles": related,
+                }
+            )
+
+    for topic_name, _ in TOPIC_SPECS:
+        if buckets[topic_name]:
+            _append_for_topic(topic_name, buckets[topic_name])
+    if buckets[_OTHER_TOPIC]:
+        _append_for_topic(_OTHER_TOPIC, buckets[_OTHER_TOPIC])
+    return records
+
+
+_ARTICLE_BLOCK_RE = re.compile(
+    r"###\s*文章:\s*(?P<title>[^\n]+)\n"
+    r"(?P<body>.*?)(?=\n###\s*文章:|\n##\s|\Z)",
+    re.DOTALL,
+)
+_FIELD_RE = {
+    "instruments": re.compile(r"-\s*\*\*涉及品种\*\*:\s*(.+)", re.MULTILINE),
+    "direction": re.compile(r"-\s*\*\*方向判断\*\*:\s*(.+)", re.MULTILINE),
+    "forecast_cycle": re.compile(r"-\s*\*\*预测周期\*\*:\s*(.+)", re.MULTILINE),
+    "logic": re.compile(r"-\s*\*\*分析逻辑\*\*:\s*((?:.|\n)*?)(?=\n-\s*\*\*|\Z)", re.MULTILINE),
+}
+_LINK_RE = re.compile(r"\[原文链接\]\(([^)]+)\)")
+
+
+def parse_topics_from_markdown(markdown: str, target_date: str) -> list[dict[str, str]]:
+    """从已生成的 Markdown 摘要解析 topics（LLM 或历史文件回灌）。"""
+    records: list[dict[str, str]] = []
+    sections = re.split(r"\n##\s+\d+\.\s+", markdown)
+    if len(sections) <= 1:
+        for m in _ARTICLE_BLOCK_RE.finditer(markdown):
+            records.append(_topic_row_from_block(m, target_date, "综合"))
+        return records
+
+    for section in sections[1:]:
+        lines = section.split("\n", 1)
+        keyword = lines[0].strip()
+        body = lines[1] if len(lines) > 1 else ""
+        for m in _ARTICLE_BLOCK_RE.finditer(body):
+            records.append(_topic_row_from_block(m, target_date, keyword))
+    return records
+
+
+def _topic_row_from_block(
+    match: re.Match[str], target_date: str, keyword: str
+) -> dict[str, str]:
+    title = match.group("title").strip()
+    body = match.group("body")
+    url_m = _LINK_RE.search(body)
+    url = url_m.group(1).strip() if url_m else "#"
+    row: dict[str, str] = {
+        "digest_date": target_date,
+        "keyword": keyword,
+        "instruments": "",
+        "direction": "",
+        "forecast_cycle": "",
+        "logic": "",
+        "related_articles": json.dumps(
+            [{"title": title, "url": url}], ensure_ascii=False
+        ),
+    }
+    for field, pattern in _FIELD_RE.items():
+        fm = pattern.search(body)
+        if fm:
+            row[field] = fm.group(1).strip()
+    return row
 
 
 def save_digest(markdown: str, target_date: str) -> str:

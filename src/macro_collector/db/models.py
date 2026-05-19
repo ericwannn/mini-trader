@@ -100,6 +100,14 @@ def get_articles_by_date(target_date: str):
     return [dict(r) for r in rows]
 
 
+def get_article_by_id(article_id: int) -> Optional[dict]:
+    """按主键获取单篇文章"""
+    conn = get_connection()
+    row = conn.execute("SELECT * FROM articles WHERE id = ?", (article_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
 # ── 摘要 ──────────────────────────────────────────────
 
 def store_digest(date_str: str, summary: str, raw_data: str = ""):
@@ -117,6 +125,49 @@ def get_digest(date_str: str) -> Optional[dict]:
     row = conn.execute("SELECT * FROM digests WHERE date = ?", (date_str,)).fetchone()
     conn.close()
     return dict(row) if row else None
+
+
+def store_topics(digest_date: str, topics: list[dict]) -> int:
+    """写入某日议题行（先删后插）。"""
+    conn = get_connection()
+    conn.execute("DELETE FROM topics WHERE digest_date = ?", (digest_date,))
+    for t in topics:
+        conn.execute(
+            """INSERT INTO topics
+               (digest_date, keyword, instruments, direction, forecast_cycle, logic, related_articles)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (
+                digest_date,
+                t.get("keyword", ""),
+                t.get("instruments", ""),
+                t.get("direction", ""),
+                t.get("forecast_cycle", ""),
+                t.get("logic", ""),
+                t.get("related_articles", ""),
+            ),
+        )
+    conn.commit()
+    conn.close()
+    return len(topics)
+
+
+def get_topics_by_date(digest_date: str) -> list[dict]:
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT * FROM topics WHERE digest_date = ? ORDER BY id",
+        (digest_date,),
+    ).fetchall()
+    conn.close()
+    out: list[dict] = []
+    for r in rows:
+        item = dict(r)
+        raw = item.get("related_articles") or "[]"
+        try:
+            item["related_articles_list"] = json.loads(raw)
+        except json.JSONDecodeError:
+            item["related_articles_list"] = []
+        out.append(item)
+    return out
 
 
 def get_digests(limit: int = 30):

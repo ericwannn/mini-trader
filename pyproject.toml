@@ -1,6 +1,6 @@
 [project]
 name = "macro-collector"
-version = "0.3.0"
+version = "0.3.1"
 description = "每日宏观资产配置资讯采集、分析与摘要生成"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -13,10 +13,13 @@ dependencies = [
     "jinja2>=3.1.6",
     "httpx>=0.28.1",
     "akshare>=1.14",
+    "markdown>=3.5",
+    "bleach>=6.0",
 ]
 
 [project.scripts]
 macro-collector = "macro_collector.cli:main"
+macro-server = "macro_collector.service:main"
 
 [tool.uv.sources]
 
@@ -24,8 +27,11 @@ macro-collector = "macro_collector.cli:main"
 requires = ["setuptools>=68.0"]
 build-backend = "setuptools.build_meta"
 
+[tool.setuptools]
+include-package-data = true
+
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-"macro_collector" = ["db/schema.sql", "frontend/templates/*.html"]
+macro_collector = ["db/schema.sql", "frontend/templates/*.html"]

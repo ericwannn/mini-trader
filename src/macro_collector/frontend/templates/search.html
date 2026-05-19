@@ -60,7 +60,7 @@
                 <tbody>
                 {% for a in articles %}
                 <tr>
-                    <td><a href="{{ a.url or '#' }}" target="_blank">{{ a.title[:60] }}</a></td>
+                    <td><a href="/article/{{ a.id }}">{{ a.title[:60] }}</a></td>
                     <td><span class="tag">{{ a.source }}</span></td>
                     <td>{{ a.collected_at[:10] }}</td>
                 </tr>
