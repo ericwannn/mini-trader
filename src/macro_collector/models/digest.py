@@ -29,6 +29,65 @@ TOPIC_SPECS: list[tuple[str, tuple[str, ...]]] = [
 
 _OTHER_TOPIC = "其他宏观资讯"
 
+_BULL_KEYWORDS: tuple[str, ...] = (
+    "看多",
+    "看涨",
+    "利多",
+    "利好",
+    "超配",
+    "增持",
+    "买入",
+    "上调",
+    "上行",
+    "上涨",
+    "大涨",
+    "飙升",
+    "走强",
+    "反弹",
+    "回升",
+    "拉升",
+    "突破",
+    "创新高",
+    "扩张",
+    "回暖",
+    "修复",
+    "配置价值",
+    "机会",
+    "推荐",
+)
+_BEAR_KEYWORDS: tuple[str, ...] = (
+    "看空",
+    "看跌",
+    "利空",
+    "偏空",
+    "减持",
+    "卖出",
+    "下调",
+    "下行",
+    "下跌",
+    "大跌",
+    "暴跌",
+    "走弱",
+    "下挫",
+    "回落",
+    "回调",
+    "跌破",
+    "创新低",
+    "萎缩",
+    "收缩",
+    "承压",
+    "拖累",
+    "冲击",
+    "谨慎",
+)
+# 快讯/盘面常用表述（单次计分，避免「涨」「跌」子串重复叠加）
+_BULL_MOVE_RE = re.compile(
+    r"(?:收涨|领涨|上涨|大涨|涨幅|走高|升至|涨超|涨停|涨\d|涨\s*[\d.]+%)"
+)
+_BEAR_MOVE_RE = re.compile(
+    r"(?:收跌|领跌|下跌|大跌|跌幅|走低|降至|跌超|跌停|跌\d|跌\s*[\d.]+%|跌幅达)"
+)
+
 _VARIETY_PATTERNS: list[tuple[str, tuple[str, ...]]] = [
     ("黄金", ("黄金", "COMEX金", "金价")),
     ("白银", ("白银",)),
@@ -112,13 +171,20 @@ def _extract_varieties(a: Article) -> str:
     return "、".join(found) if found else "(未显式提取，见摘要)"
 
 
+def _direction_scores(text: str) -> tuple[int, int]:
+    """统计多空信号强度（关键词各计 1 分，盘面涨跌表述按命中次数计分）。"""
+    bull = sum(1 for w in _BULL_KEYWORDS if w in text)
+    bear = sum(1 for w in _BEAR_KEYWORDS if w in text)
+    bull += len(_BULL_MOVE_RE.findall(text))
+    bear += len(_BEAR_MOVE_RE.findall(text))
+    return bull, bear
+
+
 def _direction_judgement(a: Article) -> str:
-    text = _article_text(a, 8000)
-    bull = sum(1 for w in ("看多", "看涨", "上行", "利好", "超配", "推荐", "配置价值", "机会", "修复", "回暖") if w in text)
-    bear = sum(1 for w in ("看空", "看跌", "下行", "承压", "回落", "谨慎", "风险", "冲击", "拖累", "回调") if w in text)
-    if bull > bear + 1:
+    bull, bear = _direction_scores(_article_text(a, 8000))
+    if bull > bear:
         return "看多"
-    if bear > bull + 1:
+    if bear > bull:
         return "看空"
     return "中性"
 

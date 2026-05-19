@@ -11,6 +11,7 @@ from macro_collector.db.models import DB_PATH
 from macro_collector.frontend.markdown_render import render_markdown_html
 from macro_collector.models import Article
 from macro_collector.models.digest import (
+    _direction_judgement,
     extract_topics_from_articles,
     generate_digest_markdown,
     parse_topics_from_markdown,
@@ -51,6 +52,35 @@ class TopicsTestCase(unittest.TestCase):
                 source="test",
             ),
         ]
+
+    def test_direction_judgement_keywords(self) -> None:
+        bullish = Article(
+            title="黄金上调目标价",
+            account="测试",
+            keyword_found="黄金",
+            url="https://example.com/1",
+            content="机构上调金价预测，维持看多，短期上行。",
+            source="test",
+        )
+        bearish = Article(
+            title="原油大跌",
+            account="测试",
+            keyword_found="原油",
+            url="https://example.com/2",
+            content="国际油价大跌，利空压制，油价回落。",
+            source="test",
+        )
+        ticker = Article(
+            title="股指",
+            account="测试",
+            keyword_found="",
+            url="https://example.com/3",
+            content="印尼基准股指日内跌幅达1%。",
+            source="test",
+        )
+        self.assertEqual(_direction_judgement(bullish), "看多")
+        self.assertEqual(_direction_judgement(bearish), "看空")
+        self.assertEqual(_direction_judgement(ticker), "看空")
 
     def test_extract_topics_from_articles(self) -> None:
         arts = self._sample_articles()
