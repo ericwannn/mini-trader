@@ -9,6 +9,17 @@ from minitrader.models import Article
 from minitrader.utils import make_session
 
 
+def wallstreetcn_live_url(item: dict) -> str:
+    """快讯详情页 URL（API 的 uri 字段为准，勿用已失效的 /live/global/ 路径）。"""
+    uri = (item.get("uri") or "").strip()
+    if uri.startswith("http"):
+        return uri
+    live_id = item.get("id")
+    if live_id is not None:
+        return f"https://wallstreetcn.com/livenews/{live_id}"
+    return ""
+
+
 class WallStreetCnCollector(BaseCollector):
     """华尔街见闻快讯采集"""
 
@@ -33,7 +44,7 @@ class WallStreetCnCollector(BaseCollector):
                         title=item.get("title", "") or (item.get("content_text", "") or "")[:60],
                         account="华尔街见闻",
                         keyword_found="global-channel",
-                        url=f"https://wallstreetcn.com/live/global/{item.get('id', '')}",
+                        url=wallstreetcn_live_url(item),
                         content=item.get("content_text", ""),
                         publish_time=item.get("display_time", ""),
                         source="wallstreetcn",

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import signal
 import subprocess
@@ -64,13 +65,22 @@ def _remove_pid_file() -> None:
         pass
 
 
-def _health_ok(host: str, port: int, timeout: float = 2.0) -> bool:
+def _health_check(host: str, port: int, timeout: float = 2.0) -> tuple[bool, str | None]:
+    """返回 (是否 200, health JSON 中的 service 字段)。"""
     url = f"{_public_url(host, port)}/health"
     try:
         with urllib.request.urlopen(url, timeout=timeout) as resp:
-            return resp.status == 200
-    except (urllib.error.URLError, OSError, TimeoutError):
-        return False
+            if resp.status != 200:
+                return False, None
+            body = json.loads(resp.read().decode("utf-8"))
+            return body.get("status") == "ok", body.get("service")
+    except (urllib.error.URLError, OSError, TimeoutError, ValueError, json.JSONDecodeError):
+        return False, None
+
+
+def _health_ok(host: str, port: int, timeout: float = 2.0) -> bool:
+    ok, service = _health_check(host, port, timeout)
+    return ok and service == "minitrader"
 
 
 def start_server(
@@ -89,6 +99,16 @@ def start_server(
         pid = read_pid()
         print(f"服务已在运行 (PID {pid}) — {_public_url(host, port)}")
         return 0
+
+    port_ok, port_service = _health_check(host, port, timeout=0.8)
+    if port_ok and port_service != "minitrader":
+        print(
+            f"端口 {port} 已被旧版服务占用 (health service={port_service!r})，"
+            "请先停止旧进程再启动 MiniTrader："
+        )
+        print(f"  lsof -i :{port}")
+        print(f"  kill <PID>   # 或: ./scripts/minitrader-server.sh restart")
+        return 1
 
     if foreground:
         import uvicorn
@@ -201,10 +221,16 @@ def status_server() -> int:
         print(f"启动: uv run minitrader serve start  或  ./scripts/minitrader-server.sh start")
         return 1
 
-    healthy = _health_ok(host, port)
+    port_ok, port_service = _health_check(host, port)
+    healthy = port_ok and port_service == "minitrader"
     print(f"状态: 运行中 (PID {pid})")
     print(f"地址: {url}")
-    print(f"健康: {'OK' if healthy else '无响应（可能仍在启动或端口被占用）'}")
+    if healthy:
+        print("健康: OK")
+    elif port_ok and port_service != "minitrader":
+        print(f"健康: 端口被其它服务占用 (service={port_service!r})，请 kill 旧进程后 restart")
+    else:
+        print("健康: 无响应（可能仍在启动或端口被占用）")
     print(f"日志: {LOG_FILE}")
     return 0 if healthy else 2
 

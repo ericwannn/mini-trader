@@ -23,6 +23,30 @@ def get_connection() -> sqlite3.Connection:
     return conn
 
 
+_WSCN_OLD_PREFIX = "https://wallstreetcn.com/live/global/"
+_WSCN_NEW_PREFIX = "https://wallstreetcn.com/livenews/"
+
+
+def fix_legacy_wallstreetcn_urls() -> None:
+    """将历史误写的 /live/global/ 链接改为 API 提供的 /livenews/ 路径。"""
+    conn = get_connection()
+    conn.execute(
+        "UPDATE articles SET url = REPLACE(url, ?, ?) WHERE url LIKE ?",
+        (_WSCN_OLD_PREFIX, _WSCN_NEW_PREFIX, f"{_WSCN_OLD_PREFIX}%"),
+    )
+    conn.execute(
+        "UPDATE topics SET related_articles = REPLACE(related_articles, ?, ?) "
+        "WHERE related_articles LIKE ?",
+        (_WSCN_OLD_PREFIX, _WSCN_NEW_PREFIX, f"%{_WSCN_OLD_PREFIX}%"),
+    )
+    conn.execute(
+        "UPDATE digests SET summary = REPLACE(summary, ?, ?) WHERE summary LIKE ?",
+        (_WSCN_OLD_PREFIX, _WSCN_NEW_PREFIX, f"%{_WSCN_OLD_PREFIX}%"),
+    )
+    conn.commit()
+    conn.close()
+
+
 def init_db():
     """初始化数据库表结构"""
     if not os.path.exists(SCHEMA_PATH):
@@ -33,6 +57,7 @@ def init_db():
     conn.executescript(schema)
     conn.commit()
     conn.close()
+    fix_legacy_wallstreetcn_urls()
 
 
 # ── 文章去重 ──────────────────────────────────────────
