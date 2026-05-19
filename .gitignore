@@ -219,6 +219,7 @@ __marimo__/
 
 # MiniTrader — local data & runtime (do not commit)
 .DS_Store
+.env
 output/
 artifacts/
 macro.db

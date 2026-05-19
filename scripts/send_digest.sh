@@ -10,12 +10,12 @@ RAW_FILE="output/raw/raw_${TODAY}.json"
 
 # 如果今天的 digest 不存在，先生成
 if [ ! -f "$DIGEST_FILE" ]; then
-    uv run macro-collector digest
+    uv run minitrader digest
 fi
 
 if [ ! -f "$DIGEST_FILE" ]; then
     echo "今日摘要不存在，先运行采集..."
-    uv run macro-collector all
+    uv run minitrader all
 fi
 
 # 提取议题数量

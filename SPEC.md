@@ -2,11 +2,11 @@
 
 ## 项目现状
 
-已有库结构 (macro_collector v0.2.0, uv 管理):
+已有库结构 (minitrader v0.2.0, uv 管理):
 
 ```
 ~/Investment/daily_digest/
-├── pyproject.toml              # uv 项目, entry: macro-collector
+├── pyproject.toml              # uv 项目, entry: minitrader
 ├── spec.md                     # 本文件
 ├── README.md
 ├── .gitignore
@@ -20,7 +20,7 @@
 │   └── digests/.gitkeep
 ├── scripts/
 │   └── collect.sh              # cron 包装脚本
-└── src/macro_collector/
+└── src/minitrader/
     ├── __init__.py
     ├── __about__.py             # __version__ = "0.2.0"
     ├── cli.py                   # collect / digest / all
@@ -191,7 +191,7 @@ class BaseCollector(ABC):
 修改 `cli.py` 中的 `do_collect`，遍历 `ALL_COLLECTORS` 调用各自的 `fetch()`，合并所有文章后去重保存。
 
 ```python
-from macro_collector.collectors import ALL_COLLECTORS
+from minitrader.collectors import ALL_COLLECTORS
 
 def do_collect(args):
     today = datetime.now().strftime("%Y-%m-%d")
@@ -283,7 +283,7 @@ def do_collect(args):
 
 ### 9. 更新 scripts/collect.sh
 
-cron 脚本应该执行 `uv run macro-collector all` 来完成采集+生成摘要。
+cron 脚本应该执行 `uv run minitrader all` 来完成采集+生成摘要。
 
 ### 10. 更新 README.md
 
@@ -302,13 +302,13 @@ cd ~/Investment/daily_digest
 uv sync
 
 # 测试采集
-uv run macro-collector collect
+uv run minitrader collect
 
 # 测试摘要生成（基于已有 raw 数据）
-uv run macro-collector digest --date 2026-05-18
+uv run minitrader digest --date 2026-05-18
 
 # 测试完整流程
-uv run macro-collector all
+uv run minitrader all
 
 # 检查生成的 digest 文件是否包含文章标题和原文链接
 cat output/digests/digest_2026-05-18.md | head -50
@@ -318,5 +318,5 @@ cat output/digests/digest_2026-05-18.md | head -50
 
 ```bash
 cd /Users/ericwan/Investment/daily_digest
-cursor agent --print -p "请按 SPEC.md 的要求完善 macro-collector 项目。先读取现有所有源码文件理解当前状态，然后按顺序执行所有步骤。注意使用 uv 而不是 pip。"
+cursor agent --print -p "请按 SPEC.md 的要求完善 minitrader 项目。先读取现有所有源码文件理解当前状态，然后按顺序执行所有步骤。注意使用 uv 而不是 pip。"
 ```

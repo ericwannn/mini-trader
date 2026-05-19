@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# macro-collector：采集多源资讯并生成本地 Markdown 摘要
+# minitrader：采集多源资讯并生成本地 Markdown 摘要
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -12,11 +12,11 @@ LOG_FILE="$PROJECT_DIR/output/collect_${DATE}.log"
 mkdir -p "$PROJECT_DIR/output"
 
 echo "============================================"
-echo " Macro Collector - $DATE"
+echo " MiniTrader - $DATE"
 echo "============================================"
 echo ""
 
-uv run macro-collector all 2>&1 | tee "$LOG_FILE"
+uv run minitrader all 2>&1 | tee "$LOG_FILE"
 
 echo ""
 echo "完成。日志: $LOG_FILE"

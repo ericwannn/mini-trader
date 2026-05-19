@@ -6,11 +6,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from macro_collector.db import get_topics_by_date, init_db, store_topics
-from macro_collector.db.models import DB_PATH
-from macro_collector.frontend.markdown_render import render_markdown_html
-from macro_collector.models import Article
-from macro_collector.models.digest import (
+from minitrader.db import get_topics_by_date, init_db, store_topics
+from minitrader.db.models import DB_PATH
+from minitrader.frontend.markdown_render import render_markdown_html
+from minitrader.models import Article
+from minitrader.models.digest import (
     _direction_judgement,
     extract_topics_from_articles,
     generate_digest_markdown,
@@ -22,13 +22,13 @@ class TopicsTestCase(unittest.TestCase):
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
         self._orig_db = DB_PATH
-        import macro_collector.db.models as db_models
+        import minitrader.db.models as db_models
 
         db_models.DB_PATH = str(Path(self._tmpdir.name) / "test.db")
         init_db()
 
     def tearDown(self) -> None:
-        import macro_collector.db.models as db_models
+        import minitrader.db.models as db_models
 
         db_models.DB_PATH = self._orig_db
         self._tmpdir.cleanup()

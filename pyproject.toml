@@ -1,7 +1,7 @@
 [project]
-name = "macro-collector"
-version = "0.3.1"
-description = "每日宏观资产配置资讯采集、分析与摘要生成"
+name = "minitrader"
+version = "0.4.0"
+description = "MiniTrader — 个人交易辅助工具（宏观资讯采集、摘要、涨停复盘等）"
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
@@ -18,8 +18,8 @@ dependencies = [
 ]
 
 [project.scripts]
-macro-collector = "macro_collector.cli:main"
-macro-server = "macro_collector.service:main"
+minitrader = "minitrader.cli:main"
+minitrader-server = "minitrader.service:main"
 
 [tool.uv.sources]
 
@@ -34,4 +34,4 @@ include-package-data = true
 where = ["src"]
 
 [tool.setuptools.package-data]
-macro_collector = ["db/schema.sql", "frontend/templates/*.html"]
+minitrader = ["db/schema.sql", "frontend/templates/*.html"]

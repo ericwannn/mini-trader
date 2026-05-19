@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 安装 macro-collector 包及依赖（editable）
+# 安装 minitrader 包及依赖（editable）
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -8,7 +8,7 @@ cd "$PROJECT_DIR"
 
 unset VIRTUAL_ENV
 
-echo "=== 安装 macro-collector ==="
+echo "=== 安装 minitrader ==="
 uv sync
 
 if [[ ! -f .env ]] && [[ -f .env.example ]]; then
@@ -20,6 +20,6 @@ mkdir -p output/raw output/digests
 
 echo ""
 echo "安装完成。可用命令:"
-echo "  uv run macro-collector --help"
-echo "  uv run macro-collector serve start"
-echo "  ./scripts/macro-server.sh status"
+echo "  uv run minitrader --help"
+echo "  uv run minitrader serve start"
+echo "  ./scripts/minitrader-server.sh status"
