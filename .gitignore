@@ -216,3 +216,14 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# MiniTrader — local data & runtime (do not commit)
+.DS_Store
+output/
+artifacts/
+macro.db
+macro.db-wal
+macro.db-shm
+minitrader.db
+minitrader.db-wal
+minitrader.db-shm

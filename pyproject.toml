@@ -1,0 +1,31 @@
+[project]
+name = "macro-collector"
+version = "0.3.0"
+description = "每日宏观资产配置资讯采集、分析与摘要生成"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "requests>=2.31",
+    "beautifulsoup4>=4.12",
+    "lxml>=5.0",
+    "fastapi>=0.128.8",
+    "uvicorn>=0.39.0",
+    "jinja2>=3.1.6",
+    "httpx>=0.28.1",
+    "akshare>=1.14",
+]
+
+[project.scripts]
+macro-collector = "macro_collector.cli:main"
+
+[tool.uv.sources]
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"macro_collector" = ["db/schema.sql", "frontend/templates/*.html"]

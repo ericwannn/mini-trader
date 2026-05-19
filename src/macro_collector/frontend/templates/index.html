@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>宏观资产配置日报</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f5f5; color: #333; }
+        .nav { background: #1a1a2e; padding: 16px 24px; display: flex; gap: 32px; align-items: center; }
+        .nav a { color: #e0e0e0; text-decoration: none; font-size: 15px; }
+        .nav a:hover { color: #fff; }
+        .nav .brand { font-size: 18px; font-weight: 700; color: #fff; }
+        .container { max-width: 1200px; margin: 0 auto; padding: 24px; }
+        .card { background: #fff; border-radius: 12px; padding: 20px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .card h2 { font-size: 16px; color: #1a1a2e; margin-bottom: 12px; border-left: 3px solid #4a6cf7; padding-left: 10px; }
+        .digest-list { list-style: none; }
+        .digest-item { padding: 12px 0; border-bottom: 1px solid #eee; }
+        .digest-item:last-child { border-bottom: none; }
+        .digest-item a { color: #4a6cf7; text-decoration: none; font-size: 15px; }
+        .digest-item a:hover { text-decoration: underline; }
+        .digest-meta { font-size: 12px; color: #999; margin-top: 4px; }
+        .summary-preview { font-size: 13px; color: #666; margin-top: 8px; max-height: 80px; overflow: hidden; }
+        .tag { display: inline-block; background: #e8f0fe; color: #4a6cf7; padding: 2px 8px; border-radius: 4px; font-size: 12px; margin: 2px; }
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        @media (max-width: 768px) { .grid-2 { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+    <nav class="nav">
+        <span class="brand">宏观日报</span>
+        <a href="/">首页</a>
+        <a href="/limitup">涨停复盘</a>
+        <a href="/search">搜索</a>
+    </nav>
+
+    <div class="container">
+        {% if focus_date and digest %}
+        <div class="card">
+            <h2>{{ focus_date }} 宏观摘要</h2>
+            <div style="white-space: pre-wrap; font-size: 14px; line-height: 1.8;">
+                {{- summary -}}
+            </div>
+        </div>
+
+        {% if limitups %}
+        <div class="card">
+            <h2>{{ focus_date }} 涨停复盘</h2>
+            <table style="width:100%; border-collapse: collapse; font-size: 13px;">
+                <thead><tr style="background:#f5f5f5;"><th>股票</th><th>代码</th><th>连板</th><th>涨幅</th><th>题材</th><th>封板</th></tr></thead>
+                <tbody>
+                {% for r in limitups %}
+                <tr style="border-bottom:1px solid #eee;">
+                    <td style="padding:6px 4px;">{{ r.stock_name }}</td>
+                    <td>{{ r.stock_code }}</td>
+                    <td><span class="tag">{{ r.consecutive_days }}板</span></td>
+                    <td>{{ "%.1f"|format(r.gain_since_start or 0) }}%</td>
+                    <td>{{ r.themes[:20] }}</td>
+                    <td>{{ r.first_limit_time }}</td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+
+        {% if articles %}
+        <div class="card">
+            <h2>{{ focus_date }} 参考文章 ({{ articles|length }})</h2>
+            <ul class="digest-list">
+            {% for a in articles %}
+                <li class="digest-item">
+                    <a href="{{ a.url or '#' }}" target="_blank">{{ a.title }}</a>
+                    <div class="digest-meta">{{ a.source }} · {{ a.collected_at[:10] }}</div>
+                </li>
+            {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+
+        {% else %}
+        <div class="grid-2">
+            <div class="card">
+                <h2>最近摘要</h2>
+                <ul class="digest-list">
+                {% for d in digests %}
+                    <li class="digest-item">
+                        <a href="/digest/{{ d.date }}">{{ d.date }}</a>
+                        <div class="digest-meta">{{ d.created_at[:16] if d.created_at else "" }}</div>
+                        <div class="summary-preview">{{ d.preview }}...</div>
+                    </li>
+                {% endfor %}
+                </ul>
+                {% if not digests %}<p style="color:#999;">暂无摘要数据</p>{% endif %}
+            </div>
+
+            <div>
+                <div class="card">
+                    <h2>功能导航</h2>
+                    <ul style="list-style:none; line-height:2;">
+                        <li><a href="/limitup">涨停复盘 →</a></li>
+                        <li><a href="/search">全文搜索 →</a></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</body>
+</html>
