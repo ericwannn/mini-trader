@@ -7,6 +7,7 @@ from typing import Optional
 from minitrader.collectors.base import BaseCollector
 from minitrader.models import Article
 from minitrader.utils import make_session
+from minitrader.utils.markdown_text import sanitize_title_text
 
 
 def wallstreetcn_live_url(item: dict) -> str:
@@ -39,9 +40,11 @@ class WallStreetCnCollector(BaseCollector):
             data = r.json()
             articles = []
             for item in data.get("data", {}).get("items", [])[:limit]:
+                raw_title = item.get("title", "") or (item.get("content_text", "") or "")
+                title = sanitize_title_text(raw_title, max_len=80)
                 articles.append(
                     Article(
-                        title=item.get("title", "") or (item.get("content_text", "") or "")[:60],
+                        title=title,
                         account="华尔街见闻",
                         keyword_found="global-channel",
                         url=wallstreetcn_live_url(item),

@@ -5,6 +5,8 @@ from __future__ import annotations
 import bleach
 import markdown
 
+from minitrader.utils.markdown_text import normalize_digest_markdown
+
 
 _ALLOWED_TAGS = [
     "h1", "h2", "h3", "h4", "h5", "h6",
@@ -22,6 +24,7 @@ def render_markdown_html(text: str) -> str:
     """Markdown → HTML，并用 bleach 白名单过滤。"""
     if not text:
         return ""
+    text = normalize_digest_markdown(text)
     raw_html = markdown.markdown(
         text,
         extensions=["extra", "nl2br", "sane_lists"],

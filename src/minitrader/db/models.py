@@ -47,6 +47,17 @@ def fix_legacy_wallstreetcn_urls() -> None:
     conn.close()
 
 
+def _ensure_topics_viewpoint_columns() -> None:
+    conn = get_connection()
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(topics)").fetchall()}
+    if "actor" not in cols:
+        conn.execute("ALTER TABLE topics ADD COLUMN actor TEXT DEFAULT ''")
+    if "viewpoint" not in cols:
+        conn.execute("ALTER TABLE topics ADD COLUMN viewpoint TEXT DEFAULT ''")
+    conn.commit()
+    conn.close()
+
+
 def init_db():
     """初始化数据库表结构"""
     if not os.path.exists(SCHEMA_PATH):
@@ -57,6 +68,7 @@ def init_db():
     conn.executescript(schema)
     conn.commit()
     conn.close()
+    _ensure_topics_viewpoint_columns()
     fix_legacy_wallstreetcn_urls()
 
 
@@ -162,11 +174,14 @@ def store_topics(digest_date: str, topics: list[dict]) -> int:
     for t in topics:
         conn.execute(
             """INSERT INTO topics
-               (digest_date, keyword, instruments, direction, forecast_cycle, logic, related_articles)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+               (digest_date, keyword, actor, viewpoint, instruments, direction,
+                forecast_cycle, logic, related_articles)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 digest_date,
                 t.get("keyword", ""),
+                t.get("actor", ""),
+                t.get("viewpoint", ""),
                 t.get("instruments", ""),
                 t.get("direction", ""),
                 t.get("forecast_cycle", ""),

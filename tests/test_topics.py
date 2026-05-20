@@ -92,9 +92,12 @@ class TopicsTestCase(unittest.TestCase):
     def test_parse_topics_from_markdown_roundtrip(self) -> None:
         arts = self._sample_articles()
         md = generate_digest_markdown(arts, "2026-05-20")
+        self.assertNotIn("[原文链接]", md)
         parsed = parse_topics_from_markdown(md, "2026-05-20")
         self.assertGreater(len(parsed), 0)
         self.assertIn("direction", parsed[0])
+        rel = __import__("json").loads(parsed[0]["related_articles"])
+        self.assertEqual(rel[0]["url"], "https://example.com/gold")
 
     def test_store_and_get_topics(self) -> None:
         arts = self._sample_articles()

@@ -20,6 +20,8 @@ CREATE TABLE IF NOT EXISTS topics (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     digest_date TEXT NOT NULL,
     keyword TEXT,
+    actor TEXT,
+    viewpoint TEXT,
     instruments TEXT,
     direction TEXT,
     forecast_cycle TEXT,
