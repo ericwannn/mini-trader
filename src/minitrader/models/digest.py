@@ -8,7 +8,7 @@ import re
 from datetime import datetime
 from typing import Optional
 
-from minitrader.models import Article, friendly_source
+from minitrader.models import Article, SOURCE_LABELS, friendly_source
 from minitrader.utils.markdown_text import make_markdown_header_link
 
 
@@ -247,44 +247,99 @@ _MEDIA_ACCOUNTS = frozenset(
     {
         "华尔街见闻",
         "金十",
+        "金十数据",
         "新浪财经",
         "搜狗",
         "财联社",
         "证券时报",
         "新华社",
+        "微信公众号",
         "global-channel",
+        *SOURCE_LABELS.values(),
     }
 )
+# 标题前缀若以此结尾，多为媒体/栏目名而非观点主体
+_MEDIA_TITLE_SUFFIXES = ("见闻", "财经", "快讯", "数据", "新闻", "电讯", "社", "网")
 
 _INSTITUTION_RE = re.compile(
     r"([\u4e00-\u9fffA-Za-z0-9·]{2,24}(?:"
     r"银行|证券|基金|信托|保险|期货|资管|资本|投资|研究(?:院|所)?|央行|联储|美联储|欧央行|财政部|发改委|统计局"
     r"))"
 )
+# 无「银行/证券」后缀的常见机构名（按长度降序，避免子串误匹配）
+_NAMED_INSTITUTIONS: tuple[str, ...] = (
+    "摩根士丹利",
+    "摩根大通",
+    "中金公司",
+    "中信证券",
+    "中信建投",
+    "国泰君安",
+    "华泰证券",
+    "招商证券",
+    "申万宏源",
+    "海通证券",
+    "广发证券",
+    "兴业证券",
+    "长江证券",
+    "东方证券",
+    "高盛",
+    "花旗",
+    "瑞银",
+    "野村",
+)
 
 
-def _extract_actor(a: Article) -> str:
-    """提取观点主体（机构/作者/媒体号），快讯类优先从标题与正文机构名解析。"""
-    account = (a.account or "").strip()
-    if account and account not in _MEDIA_ACCOUNTS:
-        return account
+def _institutions_in_text(text: str) -> list[str]:
+    found = list(_INSTITUTION_RE.findall(text))
+    for name in _NAMED_INSTITUTIONS:
+        if name in text:
+            found.append(name)
+    return found
 
-    title = (a.title or "").strip()
+
+def _is_data_source_actor(name: str) -> bool:
+    """采集源/媒体名不作为观点主体。"""
+    n = (name or "").strip()
+    if not n or n in _MEDIA_ACCOUNTS:
+        return True
+    if friendly_source(n) in _MEDIA_ACCOUNTS:
+        return True
+    if len(n) <= 10 and any(n.endswith(s) for s in _MEDIA_TITLE_SUFFIXES):
+        return True
+    return False
+
+
+def _title_actor_prefix(title: str) -> str:
+    """从「机构：标题」形式提取主体，排除媒体名。"""
     for sep in ("：", ":"):
         if sep in title[:48]:
             head = title.split(sep, 1)[0].strip()
-            if 2 <= len(head) <= 24 and not head.isdigit():
+            if 2 <= len(head) <= 24 and not head.isdigit() and not _is_data_source_actor(head):
                 return head
+    return ""
 
-    text = _article_text(a, 4000)
-    found = _INSTITUTION_RE.findall(text)
+
+def _extract_actor(a: Article) -> str:
+    """提取观点主体（机构/分析师/公众号），采集源本身不算主体；找不到则返回空串。"""
+    account = (a.account or "").strip()
+    if account and not _is_data_source_actor(account):
+        return account
+
+    title = (a.title or "").strip()
+    head = _title_actor_prefix(title)
+    if head:
+        return head
+
+    content = (a.content or "").strip()
+    found = _institutions_in_text(content) if content else []
+    if not found and title:
+        found = _institutions_in_text(title)
     if found:
-        return max(set(found), key=len)
+        candidates = [x for x in set(found) if not _is_data_source_actor(x)]
+        if candidates:
+            return max(candidates, key=len)
 
-    src = friendly_source(a.source)
-    if src:
-        return src
-    return account or "未明示主体"
+    return ""
 
 
 def _format_core_viewpoint(
@@ -298,12 +353,16 @@ def _format_core_viewpoint(
     inst = instruments
     if not inst or inst.startswith("("):
         inst = "相关标的(见文)"
+    if actor:
+        if markdown:
+            return (
+                f"**{actor}** 对 **{inst}** 持 **{direction}** 观点，"
+                f"预测周期 **{horizon}**"
+            )
+        return f"{actor} 对 {inst} 持 {direction} 观点，预测周期 {horizon}"
     if markdown:
-        return (
-            f"**{actor}** 对 **{inst}** 持 **{direction}** 观点，"
-            f"预测周期 **{horizon}**"
-        )
-    return f"{actor} 对 {inst} 持 {direction} 观点，预测周期 {horizon}"
+        return f"对 **{inst}** 持 **{direction}** 观点，预测周期 **{horizon}**"
+    return f"对 {inst} 持 {direction} 观点，预测周期 {horizon}"
 
 
 def build_article_insight(a: Article) -> dict[str, str]:
@@ -399,14 +458,17 @@ def _format_article_block(a: Article) -> str:
     lines = [
         f"### {title_md}",
         f"- **来源**: {account}",
-        f"- **主体**: {ins['actor']}",
+    ]
+    if ins["actor"]:
+        lines.append(f"- **主体**: {ins['actor']}")
+    lines.extend([
         f"- **核心观点**: {ins['viewpoint_md']}",
         f"- **内容摘要**: {summary}",
         f"- **涉及品种**: {ins['instruments']}",
         f"- **方向判断**: {ins['direction']}",
         f"- **预测周期**: {ins['horizon']}",
         f"- **分析逻辑**: {ins['logic']}",
-    ]
+    ])
     return "\n".join(lines)
 
 

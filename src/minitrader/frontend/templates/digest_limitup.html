@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}{{ focus_date }} 涨停分析 — MiniTrader{% endblock %}
+{% block extra_css %}
+        .stat-box { display: inline-block; background: #f0f0f0; border-radius: 8px; padding: 12px 20px; margin: 4px; text-align: center; }
+        .stat-box .num { font-size: 24px; font-weight: 700; color: #1a1a2e; }
+        .stat-box .label { font-size: 12px; color: #666; }
+        .limitup-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        .limitup-table th { background: #f8f9fa; padding: 8px 6px; text-align: left; border-bottom: 2px solid #eee; }
+        .limitup-table td { padding: 8px 6px; border-bottom: 1px solid #eee; }
+        .tag-red { background: #fde8e8; color: #e74c3c; }
+{% endblock %}
+{% block content %}
+        <p class="page-hint">
+            <a href="/digest/{{ focus_date }}/topics">结构化议题</a> ·
+            <a href="/digest/{{ focus_date }}/summary">宏观摘要</a>
+        </p>
+        {% include "_limitup_panel.html" %}
+{% endblock %}

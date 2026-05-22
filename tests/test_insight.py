@@ -15,10 +15,35 @@ class InsightTestCase(unittest.TestCase):
             account="华尔街见闻",
             keyword_found="",
             url="https://example.com/1",
-            content="美国银行认为美债收益率可能升至6%。",
+            content="若美债收益率大幅波动，30年期或升至6%以上。",
             source="wallstreetcn",
         )
         self.assertEqual(_extract_actor(a), "美国银行调查")
+
+    def test_flash_source_has_no_media_actor(self) -> None:
+        a = Article(
+            title="现货黄金短线走高",
+            account="金十",
+            keyword_found="",
+            url="https://example.com/2",
+            content="现货黄金短线走高，日内涨0.3%。",
+            source="jin10",
+        )
+        self.assertEqual(_extract_actor(a), "")
+        ins = build_article_insight(a)
+        self.assertEqual(ins["actor"], "")
+        self.assertNotIn("金十", ins["viewpoint"])
+
+    def test_institution_from_body_over_media_account(self) -> None:
+        a = Article(
+            title="高盛上调黄金目标价",
+            account="华尔街见闻",
+            keyword_found="",
+            url="https://example.com/3",
+            content="高盛认为黄金仍有上行空间，维持看多。",
+            source="wallstreetcn",
+        )
+        self.assertEqual(_extract_actor(a), "高盛")
 
     def test_build_article_insight_line(self) -> None:
         a = Article(
@@ -48,7 +73,7 @@ class InsightTestCase(unittest.TestCase):
         )
         md = generate_digest_markdown([a], "2026-05-19")
         self.assertIn("**核心观点**", md)
-        self.assertIn("**主体**", md)
+        self.assertIn("**核心观点**", md)
         self.assertIn("本节观点速览", md)
 
 

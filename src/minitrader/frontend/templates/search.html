@@ -1,101 +1,74 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>搜索 - MiniTrader</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f5f5; color: #333; }
-        .nav { background: #1a1a2e; padding: 16px 24px; display: flex; gap: 32px; align-items: center; }
-        .nav a { color: #e0e0e0; text-decoration: none; font-size: 15px; }
-        .nav a:hover { color: #fff; }
-        .nav .brand { font-size: 18px; font-weight: 700; color: #fff; }
-        .container { max-width: 1000px; margin: 0 auto; padding: 24px; }
-        .card { background: #fff; border-radius: 12px; padding: 20px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-        .card h2 { font-size: 16px; color: #1a1a2e; margin-bottom: 12px; border-left: 3px solid #27ae60; padding-left: 10px; }
+{% extends "base.html" %}
+{% block title %}搜索 — MiniTrader{% endblock %}
+{% block extra_css %}
+        .container { max-width: 1000px; }
+        .card h2 { border-left-color: #27ae60; }
         .search-box { display: flex; gap: 8px; margin-bottom: 16px; }
         .search-box input { flex: 1; padding: 10px 14px; border: 2px solid #ddd; border-radius: 8px; font-size: 15px; }
         .search-box input:focus { border-color: #4a6cf7; outline: none; }
         .search-box button { padding: 10px 24px; background: #4a6cf7; color: #fff; border: none; border-radius: 8px; font-size: 15px; cursor: pointer; }
-        .search-box button:hover { background: #3b5de7; }
         table { width: 100%; border-collapse: collapse; font-size: 13px; }
-        th { background: #f8f9fa; padding: 8px 6px; text-align: left; font-weight: 600; border-bottom: 2px solid #eee; }
+        th { background: #f8f9fa; padding: 8px 6px; text-align: left; border-bottom: 2px solid #eee; }
         td { padding: 8px 6px; border-bottom: 1px solid #eee; }
-        tr:hover { background: #f8f9ff; }
-        .tag { display: inline-block; background: #e8f0fe; color: #4a6cf7; padding: 2px 8px; border-radius: 4px; font-size: 12px; }
         .tag-red { background: #fde8e8; color: #e74c3c; }
         .result-count { font-size: 13px; color: #666; margin-bottom: 12px; }
         .snippet { font-size: 12px; color: #888; margin-top: 4px; }
-        a { color: #4a6cf7; text-decoration: none; }
-        a:hover { text-decoration: underline; }
-    </style>
-</head>
-<body>
-    <nav class="nav">
-        <span class="brand">MiniTrader</span>
-        <a href="/">首页</a>
-        <a href="/limitup">涨停复盘</a>
-        <a href="/search">搜索</a>
-    </nav>
-
-    <div class="container">
+        a.result-link { color: #4a6cf7; text-decoration: none; }
+        a.result-link:hover { text-decoration: underline; }
+{% endblock %}
+{% block content %}
         <div class="card">
             <h2>搜索</h2>
             <form method="get" action="/search">
                 <div class="search-box">
-                    <input type="text" name="q" placeholder="搜索文章、股票、题材..." value="{{ query }}" autofocus>
+                    <input type="text" name="q" value="{{ query }}" placeholder="搜索文章标题、正文或涨停股票…" autofocus>
                     <button type="submit">搜索</button>
                 </div>
             </form>
         </div>
-
         {% if query %}
+        {% if articles %}
         <div class="card">
-            <h2>文章搜索结果</h2>
-            {% if articles %}
-            <div class="result-count">找到 {{ articles|length }} 篇相关文章</div>
+            <h2>文章结果</h2>
+            <p class="result-count">找到 {{ articles|length }} 条</p>
             <table>
                 <thead><tr><th>标题</th><th>来源</th><th>日期</th></tr></thead>
                 <tbody>
                 {% for a in articles %}
                 <tr>
-                    <td><a href="/article/{{ a.id }}">{{ a.title[:60] }}</a></td>
-                    <td><span class="tag">{{ a.source }}</span></td>
-                    <td>{{ a.collected_at[:10] }}</td>
+                    <td>
+                        <a class="result-link" href="/article/{{ a.id }}">{{ a.title }}</a>
+                        {% if a.content %}<div class="snippet">{{ a.content[:80] }}…</div>{% endif %}
+                    </td>
+                    <td>{{ a.source }}</td>
+                    <td>{{ a.collected_at[:10] if a.collected_at else "" }}</td>
                 </tr>
                 {% endfor %}
                 </tbody>
             </table>
-            {% else %}
-            <p style="color:#999;">未找到相关文章</p>
-            {% endif %}
         </div>
-
+        {% endif %}
+        {% if limitups %}
         <div class="card">
-            <h2>涨停搜索结果</h2>
-            {% if limitups %}
-            <div class="result-count">找到 {{ limitups|length }} 条相关记录</div>
+            <h2 class="accent-red">涨停结果</h2>
+            <p class="result-count">找到 {{ limitups|length }} 条</p>
             <table>
-                <thead><tr><th>日期</th><th>股票</th><th>代码</th><th>连板</th><th>涨幅</th><th>题材</th></tr></thead>
+                <thead><tr><th>股票</th><th>日期</th><th>连板</th><th>题材</th></tr></thead>
                 <tbody>
                 {% for r in limitups %}
                 <tr>
+                    <td><a class="result-link" href="/digest/{{ r.date }}/limitup">{{ r.stock_name }}</a> ({{ r.stock_code }})</td>
                     <td>{{ r.date }}</td>
-                    <td><strong>{{ r.stock_name }}</strong></td>
-                    <td>{{ r.stock_code }}</td>
-                    <td><span class="tag-red">{{ r.consecutive_days }}板</span></td>
-                    <td>{{ "%.1f"|format(r.gain_since_start or 0) }}%</td>
+                    <td><span class="tag tag-red">{{ r.consecutive_days }}板</span></td>
                     <td>{{ r.themes[:30] }}</td>
                 </tr>
                 {% endfor %}
                 </tbody>
             </table>
-            {% else %}
-            <p style="color:#999;">未找到相关涨停记录</p>
-            {% endif %}
         </div>
         {% endif %}
-    </div>
-</body>
-</html>
+        {% if not articles and not limitups %}
+        <div class="card"><p style="color:#999;">未找到与「{{ query }}」相关的结果。</p></div>
+        {% endif %}
+        {% endif %}
+{% endblock %}

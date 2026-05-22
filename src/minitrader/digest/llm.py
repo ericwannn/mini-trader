@@ -1,8 +1,10 @@
-"""通过 OpenAI 兼容 API 生成 Markdown 摘要。"""
+"""通过 OpenAI 兼容 API 生成 Markdown 摘要（streaming 模式，避免非 streaming 挂起）。"""
 
 from __future__ import annotations
 
+import json
 import sys
+import time
 
 import httpx
 
@@ -39,7 +41,7 @@ def _articles_to_llm_payload(articles: list[Article], target_date: str) -> str:
 
 
 def generate_digest_via_llm(articles: list[Article], target_date: str) -> str:
-    """调用 LLM 生成摘要 Markdown；无 API Key 时打印错误并 exit(1)。"""
+    """调用 LLM 生成摘要 Markdown（streaming 模式）；无 API Key 时打印错误并 exit(1)。"""
     api_key = llm_api_key()
     if not api_key:
         print(
@@ -58,6 +60,7 @@ def generate_digest_via_llm(articles: list[Article], target_date: str) -> str:
             {"role": "user", "content": user_content},
         ],
         "temperature": 0.4,
+        "stream": True,  # streaming 避免 DeepSeek 非 streaming 挂起
     }
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -65,26 +68,45 @@ def generate_digest_via_llm(articles: list[Article], target_date: str) -> str:
     }
 
     print(f"正在调用 LLM ({llm_model()}) …")
+    print(f"  prompt 大小: {len(user_content)} 字符 / {len(user_content) // 2} tokens", flush=True)
+
+    full_text = ""
+    chunk_count = 0
+    start_time = time.time()
     try:
-        with httpx.Client(timeout=120.0) as client:
-            resp = client.post(url, json=payload, headers=headers)
-            resp.raise_for_status()
-            data = resp.json()
+        with httpx.Client(timeout=600.0) as client:
+            with client.stream("POST", url, json=payload, headers=headers) as resp:
+                resp.raise_for_status()
+                for line in resp.iter_lines():
+                    if not line or not line.startswith("data: "):
+                        continue
+                    raw = line[6:].strip()
+                    if raw == "[DONE]":
+                        break
+                    try:
+                        chunk = json.loads(raw)
+                        delta = chunk.get("choices", [{}])[0].get("delta", {}).get("content", "")
+                        if delta:
+                            full_text += delta
+                            chunk_count += 1
+                            # 每 50 个 chunk 显示一次进度
+                            if chunk_count % 50 == 0:
+                                elapsed = time.time() - start_time
+                                print(f"  ... 已接收 {chunk_count} 个 chunk ({elapsed:.0f}s)", flush=True)
+                    except (json.JSONDecodeError, KeyError, IndexError):
+                        continue
     except httpx.HTTPStatusError as e:
         body = e.response.text[:500] if e.response is not None else ""
         print(f"❌ LLM 请求失败 HTTP {e.response.status_code}: {body}")
         sys.exit(1)
     except Exception as e:
-        print(f"❌ LLM 请求失败: {e}")
+        print(f"❌ LLM 请求失败: {type(e).__name__}: {e}")
         sys.exit(1)
 
-    try:
-        content = data["choices"][0]["message"]["content"]
-    except (KeyError, IndexError, TypeError):
-        print(f"❌ LLM 响应格式异常: {data!r}")
-        sys.exit(1)
+    elapsed = time.time() - start_time
+    print(f"  ✓ LLM 响应完成: {len(full_text)} 字符, {chunk_count} chunks, 耗时 {elapsed:.0f}s", flush=True)
 
-    text = (content or "").strip()
+    text = (full_text or "").strip()
     if text.startswith("```"):
         lines = text.splitlines()
         if lines and lines[0].startswith("```"):

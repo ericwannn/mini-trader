@@ -15,7 +15,7 @@ PROJECT_DIR = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(PROJECT_DIR))
 
 from fastapi import FastAPI, HTTPException, Request, Query
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 import uvicorn
@@ -48,6 +48,19 @@ def startup():
     init_db()
 
 
+def _latest_digest_date() -> str | None:
+    rows = get_digests(limit=1)
+    return rows[0]["date"] if rows else None
+
+
+def _nav_ctx(nav_active: str, focus_date: str | None = None) -> dict:
+    """导航栏摘要子页链接日期：显式 focus_date 优先，否则用最近一条摘要。"""
+    return {
+        "nav_active": nav_active,
+        "focus_date": focus_date or _latest_digest_date(),
+    }
+
+
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request):
     """首页——摘要时间线"""
@@ -56,8 +69,8 @@ def index(request: Request):
         d["preview_plain"] = plain_digest_preview(d.get("preview") or "")
     return templates.TemplateResponse(
         request,
-        "index.html",
-        {"digests": digests},
+        "home.html",
+        {"digests": digests, **_nav_ctx("home")},
     )
 
 
@@ -71,42 +84,57 @@ def article_detail(request: Request, article_id: int):
     return templates.TemplateResponse(
         request,
         "article.html",
+        {"article": article, **_nav_ctx("summary" if collected else "home", collected or None)},
+    )
+
+
+@app.get("/digest/{date_str}")
+def digest_redirect(date_str: str):
+    """默认进入结构化议题页。"""
+    return RedirectResponse(url=f"/digest/{date_str}/topics", status_code=302)
+
+
+@app.get("/digest/{date_str}/topics", response_class=HTMLResponse)
+def digest_topics(request: Request, date_str: str):
+    """某日结构化议题"""
+    return templates.TemplateResponse(
+        request,
+        "digest_topics.html",
         {
-            "article": article,
-            "focus_date": collected,
+            "topics": get_topics_by_date(date_str),
+            **_nav_ctx("topics", date_str),
         },
     )
 
 
-@app.get("/digest/{date_str}", response_class=HTMLResponse)
-def digest_detail(request: Request, date_str: str):
-    """某天的摘要详情"""
+@app.get("/digest/{date_str}/summary", response_class=HTMLResponse)
+def digest_summary(request: Request, date_str: str):
+    """某日宏观摘要 Markdown"""
     digest = get_digest(date_str)
-    articles = get_articles_by_date(date_str)
-    limitups = get_limitup_records(date_str)
-    themes = get_theme_heat(date_str)
-
-    summary = ""
     summary_html = ""
-    if digest:
-        summary = digest.get("summary", "")
-        summary_html = render_markdown_html(summary)
-
-    topics = get_topics_by_date(date_str)
-
+    if digest and digest.get("summary"):
+        summary_html = render_markdown_html(digest["summary"])
     return templates.TemplateResponse(
         request,
-        "index.html",
+        "digest_summary.html",
         {
-            "request": request,
-            "digest": digest,
-            "articles": articles,
-            "limitups": limitups,
-            "themes": themes,
-            "topics": topics,
-            "summary": summary,
+            "articles": get_articles_by_date(date_str),
             "summary_html": summary_html,
-            "focus_date": date_str,
+            **_nav_ctx("summary", date_str),
+        },
+    )
+
+
+@app.get("/digest/{date_str}/limitup", response_class=HTMLResponse)
+def digest_limitup(request: Request, date_str: str):
+    """某日涨停分析（与摘要同日联动）"""
+    return templates.TemplateResponse(
+        request,
+        "digest_limitup.html",
+        {
+            "records": get_limitup_records(date_str),
+            "themes": get_theme_heat(date_str),
+            **_nav_ctx("limitup", date_str),
         },
     )
 
@@ -130,11 +158,11 @@ def limitup_page(request: Request):
         request,
         "limitup.html",
         {
-            "request": request,
             "dates": dates,
             "selected_date": selected,
             "records": records,
             "themes": themes,
+            **_nav_ctx("limitup_global", selected or None),
         },
     )
 
@@ -155,10 +183,10 @@ def search_page(
         request,
         "search.html",
         {
-            "request": request,
             "query": q,
             "articles": articles,
             "limitups": limitups,
+            **_nav_ctx("search"),
         },
     )
 

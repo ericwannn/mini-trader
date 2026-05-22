@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}{{ focus_date }} 结构化议题 — MiniTrader{% endblock %}
+{% block extra_css %}
+        .topic-card { border: 1px solid #eee; border-radius: 8px; padding: 12px 14px; margin-bottom: 10px; }
+        .topic-card h3 { font-size: 14px; margin-bottom: 8px; color: #1a1a2e; }
+        .topic-card h3 a { color: #1a1a2e; text-decoration: none; }
+        .topic-card h3 a:hover { color: #4a6cf7; text-decoration: underline; }
+        .topic-meta { font-size: 12px; color: #666; margin: 4px 0; }
+        .topic-viewpoint { font-size: 14px; font-weight: 500; color: #1a1a2e; margin: 8px 0 4px; line-height: 1.5; }
+        .topic-logic { font-size: 13px; color: #444; margin-top: 8px; white-space: pre-wrap; }
+{% endblock %}
+{% block content %}
+        <p class="page-hint">
+            <a href="/digest/{{ focus_date }}/summary">宏观摘要</a> ·
+            <a href="/digest/{{ focus_date }}/limitup">涨停分析</a>
+        </p>
+        <div class="card">
+            <h2>{{ focus_date }} 结构化议题{% if topics %} ({{ topics|length }}){% endif %}</h2>
+            {% if topics %}
+            {% for t in topics %}
+            <div class="topic-card">
+                <h3>
+                    {{ t.keyword }}
+                    {% if t.related_articles_list and t.related_articles_list[0].title %}
+                    — {% set ra0 = t.related_articles_list[0] %}
+                    {% if ra0.url and ra0.url != '#' %}
+                    <a href="{{ ra0.url }}" target="_blank" rel="noopener noreferrer">{{ ra0.title[:50] }}</a>
+                    {% else %}
+                    {{ ra0.title[:50] }}
+                    {% endif %}
+                    {% endif %}
+                </h3>
+                <div class="topic-meta">
+                    {% if t.actor %}<span class="tag">{{ t.actor }}</span>{% endif %}
+                    {% if t.direction %}<span class="tag">{{ t.direction }}</span>{% endif %}
+                    {% if t.forecast_cycle %}<span class="tag">{{ t.forecast_cycle }}</span>{% endif %}
+                    {% if t.instruments %}<span>{{ t.instruments }}</span>{% endif %}
+                </div>
+                {% if t.viewpoint %}<div class="topic-viewpoint">{{ t.viewpoint }}</div>{% endif %}
+                {% if t.logic %}<div class="topic-logic">{{ t.logic }}</div>{% endif %}
+            </div>
+            {% endfor %}
+            {% else %}
+            <p style="color:#999;">暂无结构化议题，请先运行 <code>minitrader digest</code> 生成摘要。</p>
+            {% endif %}
+        </div>
+{% endblock %}

@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}{{ focus_date }} 宏观摘要 — MiniTrader{% endblock %}
+{% block extra_css %}
+        .markdown-body { font-size: 14px; line-height: 1.8; color: #333; }
+        .markdown-body h1 { font-size: 22px; margin: 16px 0 12px; }
+        .markdown-body h2 { font-size: 18px; margin: 20px 0 10px; color: #1a1a2e; border-bottom: 1px solid #eee; padding-bottom: 6px; }
+        .markdown-body h3 { font-size: 15px; margin: 14px 0 8px; }
+        .markdown-body ul { margin: 8px 0 8px 20px; }
+        .markdown-body a { color: #4a6cf7; }
+        .markdown-body hr { border: none; border-top: 1px solid #eee; margin: 16px 0; }
+        .digest-list { list-style: none; }
+        .digest-item { padding: 8px 0; border-bottom: 1px solid #eee; }
+        .article-item-link { color: #1a1a2e; text-decoration: none; font-size: 15px; font-weight: 500; }
+        .article-item-link:hover { color: #4a6cf7; text-decoration: underline; }
+        .digest-meta { font-size: 12px; color: #999; margin-top: 4px; }
+{% endblock %}
+{% block content %}
+        <p class="page-hint">
+            <a href="/digest/{{ focus_date }}/topics">结构化议题</a> ·
+            <a href="/digest/{{ focus_date }}/limitup">涨停分析</a>
+        </p>
+        <div class="card">
+            <h2>{{ focus_date }} 宏观摘要</h2>
+            {% if summary_html %}
+            <div class="markdown-body">{{ summary_html|safe }}</div>
+            {% else %}
+            <p style="color:#999;">暂无摘要正文，请先运行 <code>minitrader digest --date {{ focus_date }}</code>。</p>
+            {% endif %}
+        </div>
+        {% if articles %}
+        <div class="card">
+            <h2>参考文章 ({{ articles|length }})</h2>
+            <ul class="digest-list">
+            {% for a in articles %}
+                <li class="digest-item">
+                    {% if a.url and a.url != '#' %}
+                    <a class="article-item-link" href="{{ a.url }}" target="_blank" rel="noopener noreferrer">{{ a.title }}</a>
+                    {% else %}
+                    <a class="article-item-link" href="/article/{{ a.id }}">{{ a.title }}</a>
+                    {% endif %}
+                    <div class="digest-meta">{{ a.source }} · {{ a.collected_at[:10] }}</div>
+                </li>
+            {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+{% endblock %}

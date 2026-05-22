@@ -1,0 +1,52 @@
+        {% if records %}
+        <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:16px;">
+            {% set tier1 = records | selectattr("consecutive_days", "equalto", 1) | list | length %}
+            {% set tier2 = records | selectattr("consecutive_days", "equalto", 2) | list | length %}
+            {% set tier3 = records | selectattr("consecutive_days", "equalto", 3) | list | length %}
+            {% set tier4 = records | selectattr("consecutive_days", "gt", 3) | list | length %}
+            <div class="stat-box"><div class="num">{{ records|length }}</div><div class="label">涨停总数</div></div>
+            <div class="stat-box"><div class="num">{{ tier1 }}</div><div class="label">首板</div></div>
+            <div class="stat-box"><div class="num">{{ tier2 }}</div><div class="label">二板</div></div>
+            <div class="stat-box"><div class="num">{{ tier3 }}</div><div class="label">三板</div></div>
+            <div class="stat-box"><div class="num">{{ tier4 }}</div><div class="label">四板+</div></div>
+        </div>
+        <div class="card">
+            <h2 class="accent-red">连板梯队</h2>
+            <table class="limitup-table">
+                <thead><tr><th>股票</th><th>代码</th><th>连板</th><th>涨幅</th><th>题材</th><th>封板</th></tr></thead>
+                <tbody>
+                {% for r in records %}
+                <tr>
+                    <td><strong>{{ r.stock_name }}</strong></td>
+                    <td>{{ r.stock_code }}</td>
+                    <td><span class="tag tag-red">{{ r.consecutive_days }}板</span></td>
+                    <td>{{ "%.1f"|format(r.gain_since_start or 0) }}%</td>
+                    <td>{{ r.themes[:30] }}</td>
+                    <td>{{ r.first_limit_time }}</td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% if themes %}
+        <div class="card">
+            <h2 class="accent-red">题材热度</h2>
+            <table class="limitup-table">
+                <thead><tr><th>题材</th><th>涨停数</th><th>龙头</th></tr></thead>
+                <tbody>
+                {% for t in themes %}
+                <tr>
+                    <td><strong>{{ t.theme }}</strong></td>
+                    <td><span class="tag">{{ t.limitup_count }}只</span></td>
+                    <td>{{ t.leading_stock }}</td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+        {% else %}
+        <div class="card">
+            <p style="color:#999;">{{ focus_date or selected_date }} 暂无涨停数据。非交易日或尚未运行 <code>minitrader limitup</code>。</p>
+        </div>
+        {% endif %}

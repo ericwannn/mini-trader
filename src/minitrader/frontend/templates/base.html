@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}MiniTrader{% endblock %}</title>
+    {% block head_extra %}{% endblock %}
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f5f5; color: #333; }
+        .nav { background: #1a1a2e; padding: 14px 24px; display: flex; flex-wrap: wrap; gap: 12px 28px; align-items: center; }
+        .nav a { color: #e0e0e0; text-decoration: none; font-size: 15px; padding-bottom: 2px; }
+        .nav a:hover { color: #fff; }
+        .nav a.active { color: #fff; border-bottom: 2px solid #4a6cf7; }
+        .nav a.active-limitup { border-bottom-color: #e74c3c; }
+        .nav .brand { font-size: 18px; font-weight: 700; color: #fff; margin-right: 8px; }
+        .nav .sep { color: #555; user-select: none; }
+        .nav .date-pill { color: #aab; font-size: 13px; margin-left: auto; }
+        .nav .nav-disabled { color: #666; font-size: 15px; cursor: default; }
+        .container { max-width: 1200px; margin: 0 auto; padding: 24px; }
+        .card { background: #fff; border-radius: 12px; padding: 20px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .card h2 { font-size: 16px; color: #1a1a2e; margin-bottom: 12px; border-left: 3px solid #4a6cf7; padding-left: 10px; }
+        .card h2.accent-red { border-left-color: #e74c3c; }
+        .tag { display: inline-block; background: #e8f0fe; color: #4a6cf7; padding: 2px 8px; border-radius: 4px; font-size: 12px; margin: 2px; }
+        .page-hint { font-size: 13px; color: #888; margin-bottom: 16px; }
+        {% block extra_css %}{% endblock %}
+    </style>
+</head>
+<body>
+    {% include "_nav.html" %}
+    <div class="container">
+        {% block content %}{% endblock %}
+    </div>
+</body>
+</html>
