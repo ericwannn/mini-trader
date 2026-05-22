@@ -194,6 +194,55 @@ def store_topics(digest_date: str, topics: list[dict]) -> int:
     return len(topics)
 
 
+def lookup_article_id(
+    title: str,
+    url: str = "",
+    digest_date: str = "",
+) -> Optional[int]:
+    """按 URL 或「标题+采集日」匹配站内文章 id（用于议题标题链接）。"""
+    conn = get_connection()
+    try:
+        u = (url or "").strip()
+        if u and u != "#":
+            row = conn.execute(
+                "SELECT id FROM articles WHERE url = ? ORDER BY id DESC LIMIT 1",
+                (u,),
+            ).fetchone()
+            if row:
+                return int(row["id"])
+        t = (title or "").strip()
+        if t and digest_date:
+            row = conn.execute(
+                "SELECT id FROM articles WHERE title = ? AND date(collected_at) = ? "
+                "ORDER BY id DESC LIMIT 1",
+                (t, digest_date),
+            ).fetchone()
+            if row:
+                return int(row["id"])
+    finally:
+        conn.close()
+    return None
+
+
+def _enrich_related_articles_list(
+    related: list[dict], digest_date: str
+) -> list[dict]:
+    """为议题关联文章补上 article_id，避免搜狗等过期外链。"""
+    out: list[dict] = []
+    for ra in related:
+        item = dict(ra)
+        if not item.get("article_id"):
+            aid = lookup_article_id(
+                item.get("title", ""),
+                item.get("url", ""),
+                digest_date,
+            )
+            if aid:
+                item["article_id"] = aid
+        out.append(item)
+    return out
+
+
 def get_topics_by_date(digest_date: str) -> list[dict]:
     conn = get_connection()
     rows = conn.execute(
@@ -206,9 +255,12 @@ def get_topics_by_date(digest_date: str) -> list[dict]:
         item = dict(r)
         raw = item.get("related_articles") or "[]"
         try:
-            item["related_articles_list"] = json.loads(raw)
+            related = json.loads(raw)
         except json.JSONDecodeError:
-            item["related_articles_list"] = []
+            related = []
+        item["related_articles_list"] = _enrich_related_articles_list(
+            related, digest_date
+        )
         out.append(item)
     return out
 

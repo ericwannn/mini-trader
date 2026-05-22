@@ -10,10 +10,6 @@
         .topic-logic { font-size: 13px; color: #444; margin-top: 8px; white-space: pre-wrap; }
 {% endblock %}
 {% block content %}
-        <p class="page-hint">
-            <a href="/digest/{{ focus_date }}/summary">宏观摘要</a> ·
-            <a href="/digest/{{ focus_date }}/limitup">涨停分析</a>
-        </p>
         <div class="card">
             <h2>{{ focus_date }} 结构化议题{% if topics %} ({{ topics|length }}){% endif %}</h2>
             {% if topics %}
@@ -23,7 +19,9 @@
                     {{ t.keyword }}
                     {% if t.related_articles_list and t.related_articles_list[0].title %}
                     — {% set ra0 = t.related_articles_list[0] %}
-                    {% if ra0.url and ra0.url != '#' %}
+                    {% if ra0.article_id %}
+                    <a href="/article/{{ ra0.article_id }}">{{ ra0.title[:50] }}</a>
+                    {% elif ra0.url and ra0.url != '#' %}
                     <a href="{{ ra0.url }}" target="_blank" rel="noopener noreferrer">{{ ra0.title[:50] }}</a>
                     {% else %}
                     {{ ra0.title[:50] }}

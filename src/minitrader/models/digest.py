@@ -8,6 +8,7 @@ import re
 from datetime import datetime
 from typing import Optional
 
+from minitrader.db.models import lookup_article_id
 from minitrader.models import Article, SOURCE_LABELS, friendly_source
 from minitrader.utils.markdown_text import make_markdown_header_link
 
@@ -541,10 +542,12 @@ def extract_topics_from_articles(
     def _append_for_topic(topic_name: str, arts: list[Article]) -> None:
         for a in _dedupe_articles(arts):
             ins = build_article_insight(a)
-            related = json.dumps(
-                [{"title": a.title, "url": (a.url or "").strip() or "#"}],
-                ensure_ascii=False,
-            )
+            url = (a.url or "").strip() or "#"
+            rel_item: dict = {"title": a.title, "url": url}
+            aid = lookup_article_id(a.title, url, target_date)
+            if aid:
+                rel_item["article_id"] = aid
+            related = json.dumps([rel_item], ensure_ascii=False)
             records.append(
                 {
                     "digest_date": target_date,
