@@ -89,6 +89,17 @@ _BULL_MOVE_RE = re.compile(
 _BEAR_MOVE_RE = re.compile(
     r"(?:收跌|领跌|下跌|大跌|跌幅|走低|降至|跌超|跌停|跌\d|跌\s*[\d.]+%|跌幅达)"
 )
+# 标题中的推荐/景气表述（栏目推荐类文章应以标题为准，而非正文大盘复盘）
+_TITLE_OPINION_BULL_RE = re.compile(
+    r"(景气|高企|向好|受益|亮点|强势|修复|回暖|上行|超配|增持|看好|推荐|关注|机遇|机会)"
+)
+_TITLE_OPINION_BEAR_RE = re.compile(
+    r"(承压|低迷|恶化|风险|谨慎|减持|卖出|下调|走弱|回落|萎缩|冲击|拖累|看空|看跌)"
+)
+_TITLE_COLUMN_PREFIX_RE = re.compile(
+    r"^[\u4e00-\u9fffA-Za-z0-9]{2,12}(?:日报|周报|速递|快讯|午评|收评|复盘)$"
+)
+_MARKET_RECAP_HINTS = ("沪指", "深成指", "创业板", "成交额", "收报", "收盘", "两市")
 
 _VARIETY_PATTERNS: list[tuple[str, tuple[str, ...]]] = [
     ("黄金", ("黄金", "COMEX金", "金价")),
@@ -96,6 +107,7 @@ _VARIETY_PATTERNS: list[tuple[str, tuple[str, ...]]] = [
     ("原油", ("原油", "布伦特", "WTI", "油价", "石油")),
     ("铜", ("铜", "LME铜")),
     ("铁矿石", ("铁矿石",)),
+    ("光通信/通信", ("光通信", "通信板块", "通信ETF", "通信设备")),
     ("A股", ("A股", "沪深300", "上证综指", "上证", "创业板")),
     ("港股", ("港股", "恒生")),
     ("美股", ("美股", "纳斯达克", "标普500", "道指")),
@@ -165,10 +177,15 @@ def _bucket_by_topics(articles: list[Article]) -> dict[str, list[Article]]:
 
 
 def _extract_varieties(a: Article) -> str:
-    text = _article_text(a, 8000)
+    """优先从标题提取板块/品种，避免正文大盘播报覆盖栏目推荐标的。"""
+    title = (a.title or "")[:300]
+    full = _article_text(a, 8000)
     found: list[str] = []
     for label, patterns in _VARIETY_PATTERNS:
-        if any(p in text for p in patterns) and label not in found:
+        if any(p in title for p in patterns) and label not in found:
+            found.append(label)
+    for label, patterns in _VARIETY_PATTERNS:
+        if any(p in full for p in patterns) and label not in found:
             found.append(label)
     return "、".join(found) if found else "(未显式提取，见摘要)"
 
@@ -182,8 +199,47 @@ def _direction_scores(text: str) -> tuple[int, int]:
     return bull, bear
 
 
+def _title_opinion_scores(title: str) -> tuple[int, int]:
+    bull = len(_TITLE_OPINION_BULL_RE.findall(title))
+    bear = len(_TITLE_OPINION_BEAR_RE.findall(title))
+    bull += sum(1 for w in _BULL_KEYWORDS if w in title)
+    bear += sum(1 for w in _BEAR_KEYWORDS if w in title)
+    return bull, bear
+
+
+def _body_is_market_index_recap(content: str) -> bool:
+    """正文是否主要为 A 股指数涨跌播报（与栏目推荐类标题常并存）。"""
+    if not content or len(content.strip()) < 30:
+        return False
+    hint_hits = sum(1 for h in _MARKET_RECAP_HINTS if h in content)
+    if hint_hits < 2:
+        return False
+    move_hits = len(_BEAR_MOVE_RE.findall(content)) + len(_BULL_MOVE_RE.findall(content))
+    return move_hits >= 2
+
+
 def _direction_judgement(a: Article) -> str:
-    bull, bear = _direction_scores(_article_text(a, 8000))
+    title = (a.title or "").strip()
+    content = (a.content or "").strip()
+    title_bull, title_bear = _title_opinion_scores(title)
+
+    # 栏目/ETF 推荐：标题有明确推荐或景气表述时，以标题为准
+    if title_bull > 0 or title_bear > 0:
+        if _body_is_market_index_recap(content) or title_bull + title_bear >= 2:
+            if title_bull > title_bear:
+                return "看多"
+            if title_bear > title_bull:
+                return "看空"
+            if title_bull > 0 and title_bear == 0:
+                return "看多"
+
+    body_bull, body_bear = _direction_scores(content) if content else (0, 0)
+    # 仅正文指数涨跌、标题无明确观点时，不将当日盘面等同于报告看空/看多
+    if _body_is_market_index_recap(content) and title_bull <= title_bear:
+        return "中性"
+
+    bull = title_bull * 2 + body_bull
+    bear = title_bear * 2 + body_bear
     if bull > bear:
         return "看多"
     if bear > bull:
@@ -311,11 +367,16 @@ def _is_data_source_actor(name: str) -> bool:
 
 
 def _title_actor_prefix(title: str) -> str:
-    """从「机构：标题」形式提取主体，排除媒体名。"""
+    """从「机构：标题」形式提取主体，排除媒体名与栏目名（如 ETF日报）。"""
     for sep in ("：", ":"):
         if sep in title[:48]:
             head = title.split(sep, 1)[0].strip()
-            if 2 <= len(head) <= 24 and not head.isdigit() and not _is_data_source_actor(head):
+            if (
+                2 <= len(head) <= 24
+                and not head.isdigit()
+                and not _is_data_source_actor(head)
+                and not _TITLE_COLUMN_PREFIX_RE.match(head)
+            ):
                 return head
     return ""
 

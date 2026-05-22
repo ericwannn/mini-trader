@@ -2,9 +2,10 @@ import unittest
 
 from minitrader.models import Article
 from minitrader.models.digest import (
+    _direction_judgement,
+    _extract_actor,
     build_article_insight,
     generate_digest_markdown,
-    _extract_actor,
 )
 
 
@@ -44,6 +45,25 @@ class InsightTestCase(unittest.TestCase):
             source="wallstreetcn",
         )
         self.assertEqual(_extract_actor(a), "高盛")
+
+    def test_etf_column_title_not_bearish_on_index_recap(self) -> None:
+        a = Article(
+            title="ETF日报：资本开支高增长铸就景气支撑，光通信板块景气度高企，关注通信ETF",
+            account="新浪财经",
+            keyword_found="",
+            url="https://example.com/etf",
+            content=(
+                "市场全天冲高回落，沪指失守4100点。沪深两市成交额3.48万亿。"
+                "截至收盘，沪指跌2.04%，深成指跌2.07%，创业板指跌2.35%。"
+            ),
+            source="sina",
+        )
+        self.assertEqual(_direction_judgement(a), "看多")
+        ins = build_article_insight(a)
+        self.assertEqual(ins["actor"], "")
+        self.assertIn("光通信", ins["instruments"])
+        self.assertIn("看多", ins["viewpoint"])
+        self.assertNotIn("看空", ins["viewpoint"])
 
     def test_build_article_insight_line(self) -> None:
         a = Article(
