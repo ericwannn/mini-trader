@@ -34,7 +34,7 @@
                     {% else %}
                     <a class="article-item-link" href="/article/{{ a.id }}">{{ a.title }}</a>
                     {% endif %}
-                    <div class="digest-meta">{{ a.source }} · {{ a.collected_at[:10] }}</div>
+                    <div class="digest-meta">{{ a.source }}{% if a.collected_at %} · {{ a.collected_at[:10] }}{% endif %}</div>
                 </li>
             {% endfor %}
             </ul>

@@ -37,7 +37,15 @@ def _char_trigram_overlap(a: str, b: str) -> float:
     return len(ta & tb) / len(ta | tb)
 
 
-def _dedup_similar_articles(articles: list[Article], overlap_threshold: float = 0.30) -> list[Article]:
+_SHORT_ARTICLE_MAX_LEN = 500
+_SHORT_OVERLAP_THRESHOLD = 0.25
+_DEFAULT_OVERLAP_THRESHOLD = 0.30
+
+
+def _dedup_similar_articles(
+    articles: list[Article],
+    overlap_threshold: float = _DEFAULT_OVERLAP_THRESHOLD,
+) -> list[Article]:
     """同一来源内，对内容高度重叠的文章去重，保留内容最长的那条。
 
     目标：解决金十数据等源对同一突发新闻发布多条增量更新的问题。
@@ -64,7 +72,7 @@ def _dedup_similar_articles(articles: list[Article], overlap_threshold: float = 
                 continue
 
             # 短文章只用标题比较（金十快讯的 content 常常只是标题的重复）
-            if a_len < 500:
+            if a_len < _SHORT_ARTICLE_MAX_LEN:
                 a_text = a.title
             else:
                 a_text = f"{a.title} {(a.content or '')[:500]}"
@@ -75,13 +83,13 @@ def _dedup_similar_articles(articles: list[Article], overlap_threshold: float = 
                 if b_len == 0:
                     continue  # 不同无正文文章合并
 
-                if b_len < 500:
+                if b_len < _SHORT_ARTICLE_MAX_LEN:
                     b_text = b.title
                 else:
                     b_text = f"{b.title} {(b.content or '')[:500]}"
 
-                # 对短文章使用更低阈值
-                threshold = 0.30 if (a_len < 500 and b_len < 500) else overlap_threshold
+                both_short = a_len < _SHORT_ARTICLE_MAX_LEN and b_len < _SHORT_ARTICLE_MAX_LEN
+                threshold = _SHORT_OVERLAP_THRESHOLD if both_short else overlap_threshold
                 if _char_trigram_overlap(a_text, b_text) >= threshold:
                     if a_len > b_len:
                         kept[i] = a
@@ -181,8 +189,12 @@ def generate_digest_via_llm(articles: list[Article], target_date: str) -> str:
                     except (json.JSONDecodeError, KeyError, IndexError):
                         continue
     except httpx.HTTPStatusError as e:
-        body = e.response.text[:500] if e.response is not None else ""
-        print(f"❌ LLM 请求失败 HTTP {e.response.status_code}: {body}")
+        resp = e.response
+        if resp is not None:
+            body = resp.text[:500]
+            print(f"❌ LLM 请求失败 HTTP {resp.status_code}: {body}")
+        else:
+            print(f"❌ LLM 请求失败 HTTP（无响应）: {e}")
         sys.exit(1)
     except Exception as e:
         print(f"❌ LLM 请求失败: {type(e).__name__}: {e}")
