@@ -89,8 +89,9 @@ def collect_limitup_data(target_date: Optional[str] = None) -> dict:
         market_cap = _num(row, "总市值") / 1e8
         sealed_amt = _num(row, "封板资金", "封单额") / 1e8
         first_time = str(row.get("首次封板时间", "") or "")
-        # akshare 当前返回「所属行业」，旧版字段为「涨停原因」，兼容两者
-        reason = str(row.get("涨停原因") or row.get("所属行业") or "")
+        # 东方财富涨停板池不再返回「涨停原因」字段，仅剩「所属行业」（申万行业分类）
+        industry = str(row.get("所属行业") or "").strip()
+        # 行业名有时被截断（如"自动化设"），保留原样
         # 连板数>1时估算启动涨幅；价格缺失时退化为 0，避免除零
         start_price_est = 0.0
         gain = 0.0
@@ -107,7 +108,7 @@ def collect_limitup_data(target_date: Optional[str] = None) -> dict:
             start_price=round(start_price_est, 2),
             current_price=round(price, 2),
             gain_since_start=round(gain, 2),
-            themes=reason,
+            themes=industry,
             first_limit_time=first_time,
             market_cap=round(market_cap, 2),
             sealed_amount=round(sealed_amt, 2),
@@ -122,15 +123,15 @@ def collect_limitup_data(target_date: Optional[str] = None) -> dict:
             "name": stock_name,
             "consecutive": consecutive,
             "price": round(price, 2),
-            "themes": reason,
+            "themes": industry,
             "first_limit_time": first_time,
             "gain_since_start": round(gain, 2),
         })
 
-        # 统计题材
-        if reason:
+        # 统计题材（基于所属行业）
+        if industry:
             # 拆分多个题材
-            for t in reason.replace("，", ",").replace("、", ",").split(","):
+            for t in industry.replace("，", ",").replace("、", ",").split(","):
                 t = t.strip()
                 if len(t) >= 2:
                     if t not in theme_map:

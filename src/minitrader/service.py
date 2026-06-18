@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import signal
 import subprocess
 import sys
@@ -81,6 +82,28 @@ def _health_check(host: str, port: int, timeout: float = 2.0) -> tuple[bool, str
 def _health_ok(host: str, port: int, timeout: float = 2.0) -> bool:
     ok, service = _health_check(host, port, timeout)
     return ok and service == "minitrader"
+
+
+def _tailscale_ipv4() -> Optional[str]:
+    """返回本机 Tailscale IPv4 地址；未安装/未登录时返回 None。"""
+    if shutil.which("tailscale") is None:
+        return None
+    try:
+        out = subprocess.run(
+            ["tailscale", "ip", "-4"],
+            capture_output=True,
+            text=True,
+            timeout=1.5,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if out.returncode != 0:
+        return None
+    for line in out.stdout.splitlines():
+        ip = line.strip()
+        if ip.startswith("100."):
+            return ip
+    return None
 
 
 def start_server(
@@ -225,6 +248,10 @@ def status_server() -> int:
     healthy = port_ok and port_service == "minitrader"
     print(f"状态: 运行中 (PID {pid})")
     print(f"地址: {url}")
+    if host in ("0.0.0.0", "::", ""):
+        ts_ip = _tailscale_ipv4()
+        if ts_ip:
+            print(f"Tailscale: http://{ts_ip}:{port}")
     if healthy:
         print("健康: OK")
     elif port_ok and port_service != "minitrader":

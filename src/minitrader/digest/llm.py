@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import sys
 import time
+from collections import defaultdict
 
 import httpx
 
@@ -12,6 +13,88 @@ from minitrader.config import llm_api_key, llm_base_url, llm_model
 from minitrader.digest.generator import format_for_llm
 from minitrader.models import Article
 from minitrader.models.digest import generate_intro_prompt
+
+
+def _char_trigram_overlap(a: str, b: str) -> float:
+    """返回两个字符串的字符 trigram Jaccard 相似度。
+
+    使用字符级 3-gram 而非单词级，以支持中英文混合文本的跨语言匹配。
+    """
+    if not a or not b:
+        return 0.0
+
+    def trigrams(s: str) -> set[str]:
+        # 归一化：去空白、小写
+        normalized = "".join(s.lower().split())
+        if len(normalized) < 3:
+            return {normalized}
+        return {normalized[i : i + 3] for i in range(len(normalized) - 2)}
+
+    ta = trigrams(a)
+    tb = trigrams(b)
+    if not ta or not tb:
+        return 0.0
+    return len(ta & tb) / len(ta | tb)
+
+
+def _dedup_similar_articles(articles: list[Article], overlap_threshold: float = 0.30) -> list[Article]:
+    """同一来源内，对内容高度重叠的文章去重，保留内容最长的那条。
+
+    目标：解决金十数据等源对同一突发新闻发布多条增量更新的问题。
+    策略：对短内容文章（<500 字符）使用标题的字符 trigram 相似度；
+    对长文章使用标题+内容的相似度。短文章阈值更低（0.25）因为标题更短。
+    跳过无正文文章（content 为空），避免不同期周报被误合并。
+    """
+    by_source: dict[str, list[Article]] = defaultdict(list)
+    for a in articles:
+        by_source[a.source or "unknown"].append(a)
+
+    result: list[Article] = []
+    for source, group in by_source.items():
+        if len(group) <= 1:
+            result.extend(group)
+            continue
+
+        kept: list[Article] = []
+        for a in group:
+            a_len = len(a.content or "")
+            # 无正文文章跳过去重——它们可能是不同期报告（如不同日期的周报）
+            if a_len == 0:
+                kept.append(a)
+                continue
+
+            # 短文章只用标题比较（金十快讯的 content 常常只是标题的重复）
+            if a_len < 500:
+                a_text = a.title
+            else:
+                a_text = f"{a.title} {(a.content or '')[:500]}"
+
+            merged = False
+            for i, b in enumerate(kept):
+                b_len = len(b.content or "")
+                if b_len == 0:
+                    continue  # 不同无正文文章合并
+
+                if b_len < 500:
+                    b_text = b.title
+                else:
+                    b_text = f"{b.title} {(b.content or '')[:500]}"
+
+                # 对短文章使用更低阈值
+                threshold = 0.30 if (a_len < 500 and b_len < 500) else overlap_threshold
+                if _char_trigram_overlap(a_text, b_text) >= threshold:
+                    if a_len > b_len:
+                        kept[i] = a
+                    merged = True
+                    break
+            if not merged:
+                kept.append(a)
+        result.extend(kept)
+
+    dropped = len(articles) - len(result)
+    if dropped:
+        print(f"  ⚡ 内容去重: 合并 {dropped} 条近似文章（同一来源内容重叠>阈值）", flush=True)
+    return result
 
 
 _SYSTEM_PROMPT = (
@@ -29,6 +112,8 @@ _SYSTEM_PROMPT = (
 
 def _articles_to_llm_payload(articles: list[Article], target_date: str) -> str:
     """优先使用带正文的文章构造 prompt；若无则回退到 generator 格式化。"""
+    # 先对同一来源的内容高度重叠文章去重（解决金十数据等对同一事件发多条的问题）
+    articles = _dedup_similar_articles(articles)
     with_body = [a for a in articles if a.content and len(a.content) > 80]
     if with_body:
         return generate_intro_prompt(with_body, target_date)

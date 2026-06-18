@@ -95,6 +95,18 @@ uv run minitrader serve status
 
 可选环境变量：`MINITRADER_SERVER_HOST`、`MINITRADER_SERVER_PORT`（默认 `0.0.0.0:8000`）。健康检查：`GET /health`。
 
+## 手机远程访问（Tailscale）
+
+无固定公网 IP 时推荐用 [Tailscale](https://tailscale.com) 组建私有网络，让手机用 4G/5G 也能访问家里 Mac 的 Web，且不暴露公网。当前 Web 前端无登录鉴权，**不建议**用 ngrok 等公网隧道方案直接暴露。
+
+1. Mac 与手机分别安装 Tailscale 客户端，登录同一账号；
+2. Mac 上启动服务：`./scripts/minitrader-server.sh start`（默认绑定 `0.0.0.0:8000`，Tailscale 虚拟网卡可直达）；
+3. 查询 Mac 的 Tailscale IP：`tailscale ip -4`（或在 `minitrader serve status` 输出中查看 `Tailscale:` 行）；
+4. 手机浏览器打开 `http://<mac的100.x.x.x>:8000/` 即可，建议存为书签；
+5. 可在 Tailscale Admin → DNS 启用 **MagicDNS**，用机器名替代 IP。
+
+注意：Mac 睡眠 / 关机或 Tailscale 离线时手机无法访问；切勿对该服务开启 Tailscale Funnel（公网分享）。
+
 ## 命令一览
 
 | 子命令 | 作用 | 主要输出 |
