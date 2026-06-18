@@ -151,8 +151,8 @@ MINITRADER_LLM_MODEL=deepseek-chat
 
 ## 前端 Markdown 与结构化议题
 
-摘要详情页（`/digest/<日期>`）会将 Markdown 服务端渲染为 HTML（`markdown` + `bleach` 白名单过滤）。
-若已运行 `digest` 并写入 `topics` 表，页面顶部会展示结构化议题卡片（关键词、品种、方向、周期、逻辑、原文链接）。
+摘要详情通过顶栏三 Tab 分开展示：`/digest/<日期>/topics`（结构化议题）、`/summary`（宏观摘要）、`/limitup`（涨停分析）。
+Markdown 服务端渲染（`markdown` + `bleach`）。议题卡片含主体、核心观点、方向、周期；标题优先链站内 `/article/{id}`。
 
 ## 定时任务
 
@@ -169,10 +169,11 @@ MINITRADER_LLM_MODEL=deepseek-chat
 
 | Skill | 路径 | 场景 |
 |-------|------|------|
+| 总览索引 | `.cursor/skills/minitrader/SKILL.md` | 不确定用哪个子命令时 |
 | 资讯采集 | `.cursor/skills/minitrader-collect/SKILL.md` | `collect`、采集器扩展 |
 | 摘要生成 | `.cursor/skills/minitrader-digest/SKILL.md` | `digest` / `digest-llm`、议题与方向 |
 | 涨停复盘 | `.cursor/skills/minitrader-limitup/SKILL.md` | `limitup`、akshare |
-| Web 服务 | `.cursor/skills/minitrader-web/SKILL.md` | `serve` / `frontend` |
+| Web 服务 | `.cursor/skills/minitrader-web/SKILL.md` | `serve` / `frontend`、三栏导航 |
 | 一日流程 | `.cursor/skills/minitrader-daily/SKILL.md` | `all`、cron、`collect.sh` |
 
 ## 项目结构

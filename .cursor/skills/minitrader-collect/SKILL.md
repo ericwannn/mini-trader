@@ -1,47 +1,44 @@
 ---
 name: minitrader-collect
-description: >-
-  Runs MiniTrader multi-source macro news collection (WeChat/Sogou, Wall Street CN,
-  Jin10, Sina), deduplication, raw JSON output, and SQLite article persistence.
-  Use when the user asks to collect news, run minitrader collect, fix collectors,
-  or extend data sources.
+description: Use when collecting macro news, running minitrader collect, fixing WeChat/Sogou/Jin10/Wall Street CN/Sina collectors, or adding a new data source.
 ---
 
 # MiniTrader 资讯采集
 
-## 前置
-
-- 项目根目录执行 `uv sync` 或 `./scripts/install.sh`
-- 可选 `.env`：`MINITRADER_WECHAT_*`（搜狗微信代理/Cookie/开关）
-
-## 标准流程
+## 命令
 
 ```bash
-cd <repo_root>
-unset VIRTUAL_ENV
+cd <repo_root> && unset VIRTUAL_ENV
 uv run minitrader collect
-```
-
-可选微信参数：
-
-```bash
 uv run minitrader collect --keywords "黄金 原油" --per-keyword 4 --max-total 25
 ```
 
 ## 输出
 
-| 路径 | 说明 |
+| 目标 | 路径 |
 |------|------|
-| `output/raw/raw_YYYY-MM-DD.json` | 当日原始 JSON |
-| `minitrader.db` `articles` 表 | 去重入库 |
+| 原始 JSON | `output/raw/raw_YYYY-MM-DD.json` |
+| 文章库 | `minitrader.db` → `articles` |
 
-## 代码位置
+## 采集源
 
-- 采集器注册：`src/minitrader/collectors/__init__.py` → `ALL_COLLECTORS`
-- CLI：`src/minitrader/cli.py` → `do_collect`
-- 入库：`src/minitrader/db/sync.py` → `persist_articles`
+| 源 | 模块 | 注意 |
+|----|------|------|
+| 搜狗微信 | `collectors/wechat.py` | 验证码→跳过；`MINITRADER_WECHAT_COOKIE` / `PROXY`；`ENABLED=0` 可关 |
+| 华尔街见闻 | `collectors/wallstreetcn.py` | URL 用 API `uri` → `/livenews/{id}`，**勿** `/live/global/` |
+| 金十 | `collectors/jin10.py` | 详情页 `/detail/...`；列表 URL 可能重复，入库时加 fragment |
+| 新浪 | `collectors/sina.py` | 滚动快讯 |
 
-## 约定
+注册表：`collectors/__init__.py` → `ALL_COLLECTORS`。CLI：`cli.py` → `do_collect`。入库：`db/sync.py` → `persist_articles`。
 
-- Python 使用**绝对路径** import：`from minitrader.xxx import ...`，禁止 `from .xxx`
-- 微信遇验证码会跳过该关键词；可配置 Cookie/代理或 `MINITRADER_WECHAT_ENABLED=0`
+## 环境变量
+
+`MINITRADER_WECHAT_ENABLED` / `PROXY` / `COOKIE`（见 `.env.example`）
+
+## 常见错误
+
+| 症状 | 处理 |
+|------|------|
+| 微信 0 条 | 验证码或 Cookie 失效；配代理/Cookie 或关微信源 |
+| 见闻链接 404 | 检查是否仍生成 `/live/global/` |
+| 金十多条同 URL | `sync._normalize_url` 已按标题 hash 区分 |

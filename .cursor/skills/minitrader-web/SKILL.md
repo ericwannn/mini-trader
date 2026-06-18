@@ -1,51 +1,50 @@
 ---
 name: minitrader-web
-description: >-
-  Manages MiniTrader FastAPI web UI (start/stop/restart/status, frontend pages).
-  Use when the user asks to start server, port 8000, frontend, or web dashboard.
+description: Use when starting or debugging the FastAPI UI, port 8000 conflicts, Internal Server Error on homepage, Tailscale remote access, or digest/limitup frontend routes.
 ---
 
 # MiniTrader Web 服务
 
-## 后台管理（推荐）
+## 启停
 
 ```bash
-./scripts/minitrader-server.sh start
-./scripts/minitrader-server.sh status
-./scripts/minitrader-server.sh restart
-./scripts/minitrader-server.sh stop
+./scripts/minitrader-server.sh start|status|restart|stop
+# 等价：uv run minitrader serve start|status|...
+uv run minitrader frontend   # 前台调试
 ```
 
-等价 CLI：`uv run minitrader serve start|stop|restart|status`
+| 项 | 值 |
+|----|-----|
+| 默认 | `0.0.0.0:8000` |
+| PID | `output/minitrader-server.pid` |
+| 日志 | `output/minitrader-server.log` |
+| 健康 | `GET /health` → `{"service":"minitrader"}` |
 
-## 前台调试
+`MINITRADER_SERVER_HOST` / `PORT`。`serve status` 在绑定 `0.0.0.0` 时可能打印 Tailscale IP。
 
-```bash
-uv run minitrader frontend
-```
+## 路由
 
-## 配置
-
-| 变量 | 默认 |
+| 路径 | 页面 |
 |------|------|
-| `MINITRADER_SERVER_HOST` | `0.0.0.0` |
-| `MINITRADER_SERVER_PORT` | `8000` |
+| `/` | 摘要时间线（链到最近摘要） |
+| `/digest/<date>/topics` | 结构化议题 |
+| `/digest/<date>/summary` | 宏观摘要 Markdown + 参考文章 |
+| `/digest/<date>/limitup` | 当日涨停分析 |
+| `/digest/<date>` | 302 → topics |
+| `/article/<id>` | 站内读文 |
+| `/limitup` | 涨停复盘（选日期） |
+| `/search` | 搜索 |
 
-- PID：`output/minitrader-server.pid`
-- 日志：`output/minitrader-server.log`
-- 健康检查：`GET /health`
+顶栏：有 `focus_date` 时显示「结构化议题 / 宏观摘要 / 涨停分析」三 Tab；首页用最近摘要日期填充链接。
 
-## 主要路由
+模板：`frontend/templates/`（`base.html` + `_nav.html`）。Markdown 渲染：`frontend/markdown_render.py`。
 
-| 路径 | 功能 |
+## 常见错误
+
+| 症状 | 处理 |
 |------|------|
-| `/` | 摘要时间线 |
-| `/digest/<date>` | 当日摘要 + 议题 + 文章 |
-| `/article/<id>` | 站内阅读文章 |
-| `/limitup` | 涨停复盘 |
-| `/search` | 全文搜索 |
+| 500 / 旧服务 | `lsof -i :8000`；杀掉 `macro_collector` 进程；`serve` 要求 health `service=minitrader` |
+| 端口占用 | `./scripts/minitrader-server.sh restart` |
+| 手机访问 | Tailscale + `http://100.x.x.x:8000`（无登录，勿 Funnel） |
 
-## 代码位置
-
-- `src/minitrader/frontend/app.py`
-- 进程管理：`src/minitrader/service.py`
+代码：`frontend/app.py`、`service.py`。
