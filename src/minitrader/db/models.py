@@ -23,6 +23,41 @@ def get_connection() -> sqlite3.Connection:
     return conn
 
 
+_WSCN_OLD_PREFIX = "https://wallstreetcn.com/live/global/"
+_WSCN_NEW_PREFIX = "https://wallstreetcn.com/livenews/"
+
+
+def fix_legacy_wallstreetcn_urls() -> None:
+    """将历史误写的 /live/global/ 链接改为 API 提供的 /livenews/ 路径。"""
+    conn = get_connection()
+    conn.execute(
+        "UPDATE articles SET url = REPLACE(url, ?, ?) WHERE url LIKE ?",
+        (_WSCN_OLD_PREFIX, _WSCN_NEW_PREFIX, f"{_WSCN_OLD_PREFIX}%"),
+    )
+    conn.execute(
+        "UPDATE topics SET related_articles = REPLACE(related_articles, ?, ?) "
+        "WHERE related_articles LIKE ?",
+        (_WSCN_OLD_PREFIX, _WSCN_NEW_PREFIX, f"%{_WSCN_OLD_PREFIX}%"),
+    )
+    conn.execute(
+        "UPDATE digests SET summary = REPLACE(summary, ?, ?) WHERE summary LIKE ?",
+        (_WSCN_OLD_PREFIX, _WSCN_NEW_PREFIX, f"%{_WSCN_OLD_PREFIX}%"),
+    )
+    conn.commit()
+    conn.close()
+
+
+def _ensure_topics_viewpoint_columns() -> None:
+    conn = get_connection()
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(topics)").fetchall()}
+    if "actor" not in cols:
+        conn.execute("ALTER TABLE topics ADD COLUMN actor TEXT DEFAULT ''")
+    if "viewpoint" not in cols:
+        conn.execute("ALTER TABLE topics ADD COLUMN viewpoint TEXT DEFAULT ''")
+    conn.commit()
+    conn.close()
+
+
 def init_db():
     """初始化数据库表结构"""
     if not os.path.exists(SCHEMA_PATH):
@@ -33,6 +68,8 @@ def init_db():
     conn.executescript(schema)
     conn.commit()
     conn.close()
+    _ensure_topics_viewpoint_columns()
+    fix_legacy_wallstreetcn_urls()
 
 
 # ── 文章去重 ──────────────────────────────────────────
@@ -137,11 +174,14 @@ def store_topics(digest_date: str, topics: list[dict]) -> int:
     for t in topics:
         conn.execute(
             """INSERT INTO topics
-               (digest_date, keyword, instruments, direction, forecast_cycle, logic, related_articles)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+               (digest_date, keyword, actor, viewpoint, instruments, direction,
+                forecast_cycle, logic, related_articles)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 digest_date,
                 t.get("keyword", ""),
+                t.get("actor", ""),
+                t.get("viewpoint", ""),
                 t.get("instruments", ""),
                 t.get("direction", ""),
                 t.get("forecast_cycle", ""),
@@ -152,6 +192,55 @@ def store_topics(digest_date: str, topics: list[dict]) -> int:
     conn.commit()
     conn.close()
     return len(topics)
+
+
+def lookup_article_id(
+    title: str,
+    url: str = "",
+    digest_date: str = "",
+) -> Optional[int]:
+    """按 URL 或「标题+采集日」匹配站内文章 id（用于议题标题链接）。"""
+    conn = get_connection()
+    try:
+        u = (url or "").strip()
+        if u and u != "#":
+            row = conn.execute(
+                "SELECT id FROM articles WHERE url = ? ORDER BY id DESC LIMIT 1",
+                (u,),
+            ).fetchone()
+            if row:
+                return int(row["id"])
+        t = (title or "").strip()
+        if t and digest_date:
+            row = conn.execute(
+                "SELECT id FROM articles WHERE title = ? AND date(collected_at) = ? "
+                "ORDER BY id DESC LIMIT 1",
+                (t, digest_date),
+            ).fetchone()
+            if row:
+                return int(row["id"])
+    finally:
+        conn.close()
+    return None
+
+
+def _enrich_related_articles_list(
+    related: list[dict], digest_date: str
+) -> list[dict]:
+    """为议题关联文章补上 article_id，避免搜狗等过期外链。"""
+    out: list[dict] = []
+    for ra in related:
+        item = dict(ra)
+        if not item.get("article_id"):
+            aid = lookup_article_id(
+                item.get("title", ""),
+                item.get("url", ""),
+                digest_date,
+            )
+            if aid:
+                item["article_id"] = aid
+        out.append(item)
+    return out
 
 
 def get_topics_by_date(digest_date: str) -> list[dict]:
@@ -166,9 +255,12 @@ def get_topics_by_date(digest_date: str) -> list[dict]:
         item = dict(r)
         raw = item.get("related_articles") or "[]"
         try:
-            item["related_articles_list"] = json.loads(raw)
+            related = json.loads(raw)
         except json.JSONDecodeError:
-            item["related_articles_list"] = []
+            related = []
+        item["related_articles_list"] = _enrich_related_articles_list(
+            related, digest_date
+        )
         out.append(item)
     return out
 

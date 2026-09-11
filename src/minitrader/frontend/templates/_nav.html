@@ -1,0 +1,20 @@
+<nav class="nav">
+    <span class="brand">MiniTrader</span>
+    <a href="/" class="{% if nav_active == 'home' %}active{% endif %}">首页</a>
+    {% if focus_date %}
+    <span class="sep">|</span>
+    <a href="/digest/{{ focus_date }}/topics"
+       class="{% if nav_active == 'topics' %}active{% endif %}">结构化议题</a>
+    <a href="/digest/{{ focus_date }}/summary"
+       class="{% if nav_active == 'summary' %}active{% endif %}">宏观摘要</a>
+    <a href="/digest/{{ focus_date }}/limitup"
+       class="{% if nav_active == 'limitup' or nav_active == 'limitup_global' %}active active-limitup{% endif %}">涨停分析</a>
+    <span class="date-pill">{{ focus_date }}</span>
+    {% else %}
+    <span class="sep">|</span>
+    <span class="nav-disabled">结构化议题</span>
+    <span class="nav-disabled">宏观摘要</span>
+    <a href="/limitup" class="{% if nav_active == 'limitup_global' %}active active-limitup{% endif %}">涨停复盘</a>
+    {% endif %}
+    <a href="/search" class="{% if nav_active == 'search' %}active{% endif %}">搜索</a>
+</nav>

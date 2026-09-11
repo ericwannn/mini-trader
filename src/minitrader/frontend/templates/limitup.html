@@ -1,47 +1,20 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>涨停复盘 - MiniTrader</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f5f5; color: #333; }
-        .nav { background: #1a1a2e; padding: 16px 24px; display: flex; gap: 32px; align-items: center; }
-        .nav a { color: #e0e0e0; text-decoration: none; font-size: 15px; }
-        .nav a:hover { color: #fff; }
-        .nav .brand { font-size: 18px; font-weight: 700; color: #fff; }
-        .container { max-width: 1200px; margin: 0 auto; padding: 24px; }
-        .card { background: #fff; border-radius: 12px; padding: 20px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-        .card h2 { font-size: 16px; color: #1a1a2e; margin-bottom: 12px; border-left: 3px solid #e74c3c; padding-left: 10px; }
+{% extends "base.html" %}
+{% block title %}涨停复盘 — MiniTrader{% endblock %}
+{% block head_extra %}<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>{% endblock %}
+{% block extra_css %}
         select { padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; }
-        table { width: 100%; border-collapse: collapse; font-size: 13px; }
-        th { background: #f8f9fa; padding: 8px 6px; text-align: left; font-weight: 600; border-bottom: 2px solid #eee; }
-        td { padding: 8px 6px; border-bottom: 1px solid #eee; }
-        tr:hover { background: #f8f9ff; }
-        .tag { display: inline-block; background: #fde8e8; color: #e74c3c; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; }
-        .tag-blue { background: #e8f0fe; color: #4a6cf7; }
         .stat-box { display: inline-block; background: #f0f0f0; border-radius: 8px; padding: 12px 20px; margin: 4px; text-align: center; }
         .stat-box .num { font-size: 24px; font-weight: 700; color: #1a1a2e; }
         .stat-box .label { font-size: 12px; color: #666; }
-        .theme-bar { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
-        .theme-bar .fill { height: 20px; border-radius: 4px; background: linear-gradient(90deg, #e74c3c, #f39c12); transition: width 0.3s; }
-        .chart-container { max-height: 300px; }
-        @media (max-width: 768px) { .stat-box { padding: 8px 12px; } }
-    </style>
-</head>
-<body>
-    <nav class="nav">
-        <span class="brand">MiniTrader</span>
-        <a href="/">首页</a>
-        <a href="/limitup">涨停复盘</a>
-        <a href="/search">搜索</a>
-    </nav>
-
-    <div class="container">
+        .limitup-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        .limitup-table th { background: #f8f9fa; padding: 8px 6px; text-align: left; border-bottom: 2px solid #eee; }
+        .limitup-table td { padding: 8px 6px; border-bottom: 1px solid #eee; }
+        .tag-red { background: #fde8e8; color: #e74c3c; }
+        .chart-container { max-height: 300px; margin-top: 12px; }
+{% endblock %}
+{% block content %}
         <div class="card">
-            <h2>选择日期</h2>
+            <h2 class="accent-red">选择日期</h2>
             <form method="get" action="/limitup">
                 <select name="date" onchange="this.form.submit()">
                     {% for d in dates %}
@@ -51,60 +24,20 @@
                     {% endfor %}
                 </select>
             </form>
+            {% if selected_date %}
+            <p class="page-hint" style="margin-top:12px;margin-bottom:0;">
+                与当日摘要联动：
+                <a href="/digest/{{ selected_date }}/topics">结构化议题</a> ·
+                <a href="/digest/{{ selected_date }}/summary">宏观摘要</a> ·
+                <a href="/digest/{{ selected_date }}/limitup">涨停分析</a>
+            </p>
+            {% endif %}
         </div>
-
-        {% if records %}
-        <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:16px;">
-            {% set tier1 = records | selectattr("consecutive_days", "equalto", 1) | list | length %}
-            {% set tier2 = records | selectattr("consecutive_days", "equalto", 2) | list | length %}
-            {% set tier3 = records | selectattr("consecutive_days", "equalto", 3) | list | length %}
-            {% set tier4 = records | selectattr("consecutive_days", "gt", 3) | list | length %}
-            <div class="stat-box"><div class="num">{{ records|length }}</div><div class="label">涨停总数</div></div>
-            <div class="stat-box"><div class="num">{{ tier1 }}</div><div class="label">首板</div></div>
-            <div class="stat-box"><div class="num">{{ tier2 }}</div><div class="label">二板</div></div>
-            <div class="stat-box"><div class="num">{{ tier3 }}</div><div class="label">三板</div></div>
-            <div class="stat-box"><div class="num">{{ tier4 }}</div><div class="label">四板+</div></div>
-        </div>
-
+        {% include "_limitup_panel.html" %}
+        {% if records and themes %}
         <div class="card">
-            <h2>连板梯队</h2>
-            <table>
-                <thead><tr><th>股票</th><th>代码</th><th>连板</th><th>启动涨幅</th><th>题材</th><th>封板时间</th><th>封单(亿)</th><th>市值(亿)</th></tr></thead>
-                <tbody>
-                {% for r in records %}
-                <tr>
-                    <td><strong>{{ r.stock_name }}</strong></td>
-                    <td>{{ r.stock_code }}</td>
-                    <td><span class="tag">{{ r.consecutive_days }}连板</span></td>
-                    <td>{{ "%.1f"|format(r.gain_since_start or 0) }}%</td>
-                    <td>{{ r.themes[:30] }}</td>
-                    <td>{{ r.first_limit_time }}</td>
-                    <td>{{ "%.1f"|format(r.sealed_amount or 0) }}</td>
-                    <td>{{ "%.1f"|format(r.market_cap or 0) }}</td>
-                </tr>
-                {% endfor %}
-                </tbody>
-            </table>
-        </div>
-
-        {% if themes %}
-        <div class="card">
-            <h2>题材热度排行</h2>
-            <div class="chart-container">
-                <canvas id="themeChart"></canvas>
-            </div>
-            <table style="margin-top:16px;">
-                <thead><tr><th>题材</th><th>涨停数</th><th>龙头</th></tr></thead>
-                <tbody>
-                {% for t in themes %}
-                <tr>
-                    <td><strong>{{ t.theme }}</strong></td>
-                    <td><span class="tag tag-blue">{{ t.limitup_count }}只</span></td>
-                    <td>{{ t.leading_stock }}</td>
-                </tr>
-                {% endfor %}
-                </tbody>
-            </table>
+            <h2 class="accent-red">题材热度图表</h2>
+            <div class="chart-container"><canvas id="themeChart"></canvas></div>
         </div>
         <script>
         const ctx = document.getElementById('themeChart').getContext('2d');
@@ -128,13 +61,4 @@
         });
         </script>
         {% endif %}
-
-        {% else %}
-        <div class="card">
-            <h2>{{ selected_date }}</h2>
-            <p style="color:#999;">该日期暂无涨停数据。非交易日或数据尚未采集。</p>
-        </div>
-        {% endif %}
-    </div>
-</body>
-</html>
+{% endblock %}

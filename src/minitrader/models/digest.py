@@ -8,7 +8,9 @@ import re
 from datetime import datetime
 from typing import Optional
 
-from minitrader.models import Article, friendly_source
+from minitrader.db.models import lookup_article_id
+from minitrader.models import Article, SOURCE_LABELS, friendly_source
+from minitrader.utils.markdown_text import make_markdown_header_link
 
 
 PROJECT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
@@ -87,6 +89,17 @@ _BULL_MOVE_RE = re.compile(
 _BEAR_MOVE_RE = re.compile(
     r"(?:收跌|领跌|下跌|大跌|跌幅|走低|降至|跌超|跌停|跌\d|跌\s*[\d.]+%|跌幅达)"
 )
+# 标题中的推荐/景气表述（栏目推荐类文章应以标题为准，而非正文大盘复盘）
+_TITLE_OPINION_BULL_RE = re.compile(
+    r"(景气|高企|向好|受益|亮点|强势|修复|回暖|上行|超配|增持|看好|推荐|关注|机遇|机会)"
+)
+_TITLE_OPINION_BEAR_RE = re.compile(
+    r"(承压|低迷|恶化|风险|谨慎|减持|卖出|下调|走弱|回落|萎缩|冲击|拖累|看空|看跌)"
+)
+_TITLE_COLUMN_PREFIX_RE = re.compile(
+    r"^[\u4e00-\u9fffA-Za-z0-9]{2,12}(?:日报|周报|速递|快讯|午评|收评|复盘)$"
+)
+_MARKET_RECAP_HINTS = ("沪指", "深成指", "创业板", "成交额", "收报", "收盘", "两市")
 
 _VARIETY_PATTERNS: list[tuple[str, tuple[str, ...]]] = [
     ("黄金", ("黄金", "COMEX金", "金价")),
@@ -94,6 +107,7 @@ _VARIETY_PATTERNS: list[tuple[str, tuple[str, ...]]] = [
     ("原油", ("原油", "布伦特", "WTI", "油价", "石油")),
     ("铜", ("铜", "LME铜")),
     ("铁矿石", ("铁矿石",)),
+    ("光通信/通信", ("光通信", "通信板块", "通信ETF", "通信设备")),
     ("A股", ("A股", "沪深300", "上证综指", "上证", "创业板")),
     ("港股", ("港股", "恒生")),
     ("美股", ("美股", "纳斯达克", "标普500", "道指")),
@@ -163,10 +177,15 @@ def _bucket_by_topics(articles: list[Article]) -> dict[str, list[Article]]:
 
 
 def _extract_varieties(a: Article) -> str:
-    text = _article_text(a, 8000)
+    """优先从标题提取板块/品种，避免正文大盘播报覆盖栏目推荐标的。"""
+    title = (a.title or "")[:300]
+    full = _article_text(a, 8000)
     found: list[str] = []
     for label, patterns in _VARIETY_PATTERNS:
-        if any(p in text for p in patterns) and label not in found:
+        if any(p in title for p in patterns) and label not in found:
+            found.append(label)
+    for label, patterns in _VARIETY_PATTERNS:
+        if any(p in full for p in patterns) and label not in found:
             found.append(label)
     return "、".join(found) if found else "(未显式提取，见摘要)"
 
@@ -180,8 +199,47 @@ def _direction_scores(text: str) -> tuple[int, int]:
     return bull, bear
 
 
+def _title_opinion_scores(title: str) -> tuple[int, int]:
+    bull = len(_TITLE_OPINION_BULL_RE.findall(title))
+    bear = len(_TITLE_OPINION_BEAR_RE.findall(title))
+    bull += sum(1 for w in _BULL_KEYWORDS if w in title)
+    bear += sum(1 for w in _BEAR_KEYWORDS if w in title)
+    return bull, bear
+
+
+def _body_is_market_index_recap(content: str) -> bool:
+    """正文是否主要为 A 股指数涨跌播报（与栏目推荐类标题常并存）。"""
+    if not content or len(content.strip()) < 30:
+        return False
+    hint_hits = sum(1 for h in _MARKET_RECAP_HINTS if h in content)
+    if hint_hits < 2:
+        return False
+    move_hits = len(_BEAR_MOVE_RE.findall(content)) + len(_BULL_MOVE_RE.findall(content))
+    return move_hits >= 2
+
+
 def _direction_judgement(a: Article) -> str:
-    bull, bear = _direction_scores(_article_text(a, 8000))
+    title = (a.title or "").strip()
+    content = (a.content or "").strip()
+    title_bull, title_bear = _title_opinion_scores(title)
+
+    # 栏目/ETF 推荐：标题有明确推荐或景气表述时，以标题为准
+    if title_bull > 0 or title_bear > 0:
+        if _body_is_market_index_recap(content) or title_bull + title_bear >= 2:
+            if title_bull > title_bear:
+                return "看多"
+            if title_bear > title_bull:
+                return "看空"
+            if title_bull > 0 and title_bear == 0:
+                return "看多"
+
+    body_bull, body_bear = _direction_scores(content) if content else (0, 0)
+    # 仅正文指数涨跌、标题无明确观点时，不将当日盘面等同于报告看空/看多
+    if _body_is_market_index_recap(content) and title_bull <= title_bear:
+        return "中性"
+
+    bull = title_bull * 2 + body_bull
+    bear = title_bear * 2 + body_bear
     if bull > bear:
         return "看多"
     if bear > bull:
@@ -189,21 +247,239 @@ def _direction_judgement(a: Article) -> str:
     return "中性"
 
 
+_HORIZON_SHORT = (
+    "日内",
+    "盘中",
+    "当日",
+    "短线",
+    "短期",
+    "近期",
+    "本周",
+    "周内",
+    "近日",
+    "1-3月",
+    "1至3月",
+    "一季度",
+    "Q1",
+    "Q2",
+)
+_HORIZON_LONG = (
+    "长期",
+    "战略",
+    "1年+",
+    "一年以上",
+    "多年",
+    "结构性",
+    "2030",
+    "2027",
+    "2028",
+    "2029",
+)
+_HORIZON_MID = (
+    "下半年",
+    "四季度",
+    "三季度",
+    "季度",
+    "中期",
+    "3-6月",
+    "6-12月",
+    "3至12月",
+    "3-12月",
+    "半年",
+)
+
+
 def _horizon(a: Article) -> str:
     text = _article_text(a, 4000)
-    if any(x in text for x in ("短期", "短线", "周内", "近日", "1-3月")):
+    if any(x in text for x in _HORIZON_SHORT):
         return "短期(1-3月)"
-    if any(x in text for x in ("长期", "战略", "1年+", "一年以上", "多年")):
+    if any(x in text for x in _HORIZON_LONG):
         return "长期(1年+)"
+    if any(x in text for x in _HORIZON_MID):
+        return "中期(3-12月)"
     return "中期(3-12月)"
+
+
+_MEDIA_ACCOUNTS = frozenset(
+    {
+        "华尔街见闻",
+        "金十",
+        "金十数据",
+        "新浪财经",
+        "搜狗",
+        "财联社",
+        "证券时报",
+        "新华社",
+        "微信公众号",
+        "global-channel",
+        *SOURCE_LABELS.values(),
+    }
+)
+# 标题前缀若以此结尾，多为媒体/栏目名而非观点主体
+_MEDIA_TITLE_SUFFIXES = ("见闻", "财经", "快讯", "数据", "新闻", "电讯", "社", "网")
+
+_INSTITUTION_RE = re.compile(
+    r"([\u4e00-\u9fffA-Za-z0-9·]{2,24}(?:"
+    r"银行|证券|基金|信托|保险|期货|资管|资本|投资|研究(?:院|所)?|央行|联储|美联储|欧央行|财政部|发改委|统计局"
+    r"))"
+)
+# 无「银行/证券」后缀的常见机构名（按长度降序，避免子串误匹配）
+_NAMED_INSTITUTIONS: tuple[str, ...] = (
+    "摩根士丹利",
+    "摩根大通",
+    "中金公司",
+    "中信证券",
+    "中信建投",
+    "国泰君安",
+    "华泰证券",
+    "招商证券",
+    "申万宏源",
+    "海通证券",
+    "广发证券",
+    "兴业证券",
+    "长江证券",
+    "东方证券",
+    "高盛",
+    "花旗",
+    "瑞银",
+    "野村",
+)
+
+
+def _institutions_in_text(text: str) -> list[str]:
+    found = list(_INSTITUTION_RE.findall(text))
+    for name in _NAMED_INSTITUTIONS:
+        if name in text:
+            found.append(name)
+    return found
+
+
+def _is_data_source_actor(name: str) -> bool:
+    """采集源/媒体名不作为观点主体。"""
+    n = (name or "").strip()
+    if not n or n in _MEDIA_ACCOUNTS:
+        return True
+    if friendly_source(n) in _MEDIA_ACCOUNTS:
+        return True
+    if len(n) <= 10 and any(n.endswith(s) for s in _MEDIA_TITLE_SUFFIXES):
+        return True
+    return False
+
+
+def _title_actor_prefix(title: str) -> str:
+    """从「机构：标题」形式提取主体，排除媒体名与栏目名（如 ETF日报）。"""
+    for sep in ("：", ":"):
+        if sep in title[:48]:
+            head = title.split(sep, 1)[0].strip()
+            if (
+                2 <= len(head) <= 24
+                and not head.isdigit()
+                and not _is_data_source_actor(head)
+                and not _TITLE_COLUMN_PREFIX_RE.match(head)
+            ):
+                return head
+    return ""
+
+
+def _extract_actor(a: Article) -> str:
+    """提取观点主体（机构/分析师/公众号），采集源本身不算主体；找不到则返回空串。"""
+    account = (a.account or "").strip()
+    if account and not _is_data_source_actor(account):
+        return account
+
+    title = (a.title or "").strip()
+    head = _title_actor_prefix(title)
+    if head:
+        return head
+
+    content = (a.content or "").strip()
+    found = _institutions_in_text(content) if content else []
+    if not found and title:
+        found = _institutions_in_text(title)
+    if found:
+        candidates = [x for x in set(found) if not _is_data_source_actor(x)]
+        if candidates:
+            return max(candidates, key=len)
+
+    return ""
+
+
+def _format_core_viewpoint(
+    actor: str,
+    instruments: str,
+    direction: str,
+    horizon: str,
+    *,
+    markdown: bool = True,
+) -> str:
+    inst = instruments
+    if not inst or inst.startswith("("):
+        inst = "相关标的(见文)"
+    if actor:
+        if markdown:
+            return (
+                f"**{actor}** 对 **{inst}** 持 **{direction}** 观点，"
+                f"预测周期 **{horizon}**"
+            )
+        return f"{actor} 对 {inst} 持 {direction} 观点，预测周期 {horizon}"
+    if markdown:
+        return f"对 **{inst}** 持 **{direction}** 观点，预测周期 **{horizon}**"
+    return f"对 {inst} 持 {direction} 观点，预测周期 {horizon}"
+
+
+def build_article_insight(a: Article) -> dict[str, str]:
+    """单篇文章的结构化观点（主体 / 标的 / 方向 / 周期 / 论据）。"""
+    actor = _extract_actor(a)
+    instruments = _extract_varieties(a)
+    direction = _direction_judgement(a)
+    horizon = _horizon(a)
+    return {
+        "actor": actor,
+        "instruments": instruments,
+        "direction": direction,
+        "horizon": horizon,
+        "viewpoint": _format_core_viewpoint(
+            actor, instruments, direction, horizon, markdown=False
+        ),
+        "viewpoint_md": _format_core_viewpoint(
+            actor, instruments, direction, horizon, markdown=True
+        ),
+        "logic": _logic_chain(a),
+    }
 
 
 def _logic_chain(a: Article) -> str:
     body = (a.content or "").strip()
     if not body:
-        return "1. 原文未提供可解析正文，建议点击链接阅读原文。"
+        return "1. 原文未提供可解析正文，建议点击标题阅读原文。"
     parts = re.split(r"[。！？\n]+", body)
-    steps = [p.strip() for p in parts if len(p.strip()) > 12][:3]
+    opinion_hints = (
+        "认为",
+        "预计",
+        "观点",
+        "看好",
+        "看空",
+        "建议",
+        "目标价",
+        "目标",
+        "上调",
+        "下调",
+        "评级",
+        "预测",
+        "展望",
+        "判断",
+    )
+    scored: list[tuple[int, str]] = []
+    for p in parts:
+        p = p.strip()
+        if len(p) < 12:
+            continue
+        score = sum(1 for h in opinion_hints if h in p)
+        scored.append((score, p))
+    scored.sort(key=lambda x: (-x[0], -len(x[1])))
+    steps = [p for s, p in scored if s > 0][:3]
+    if not steps:
+        steps = [p.strip() for p in parts if len(p.strip()) > 12][:3]
     if not steps:
         chunk = body[:240].replace("\n", " ")
         return f"1. {chunk}"
@@ -230,7 +506,7 @@ def _overview_paragraph(articles: list[Article], buckets: dict[str, list[Article
     themes = "、".join(top)
     return (
         f"本日共整理 {n} 条资讯，覆盖核心议题包括：{themes}。"
-        " 下文按议题归类摘录要点，每条均保留标题与可点击原文链接，便于复核。"
+        " 下文按议题归类摘录要点，标题可点击跳转原文，便于复核。"
     )
 
 
@@ -239,17 +515,34 @@ def _format_article_block(a: Article) -> str:
     url = ((a.url or "").strip() or "#")
     summary_raw = (a.content or "").strip()
     summary = summary_raw[:200].replace("\n", " ") if summary_raw else "(无正文摘要)"
-    title_md = f"[{a.title}]({url})" if url and url != "#" else a.title
+    title_md = make_markdown_header_link(a.title, url)
+    ins = build_article_insight(a)
     lines = [
         f"### {title_md}",
-        f"- **来源**: {account} | [原文链接]({url})",
-        f"- **内容摘要**: {summary}",
-        f"- **涉及品种**: {_extract_varieties(a)}",
-        f"- **方向判断**: {_direction_judgement(a)}",
-        f"- **预测周期**: {_horizon(a)}",
-        f"- **分析逻辑**: {_logic_chain(a)}",
+        f"- **来源**: {account}",
     ]
+    if ins["actor"]:
+        lines.append(f"- **主体**: {ins['actor']}")
+    lines.extend([
+        f"- **核心观点**: {ins['viewpoint_md']}",
+        f"- **内容摘要**: {summary}",
+        f"- **涉及品种**: {ins['instruments']}",
+        f"- **方向判断**: {ins['direction']}",
+        f"- **预测周期**: {ins['horizon']}",
+        f"- **分析逻辑**: {ins['logic']}",
+    ])
     return "\n".join(lines)
+
+
+def _section_viewpoint_bullets(articles: list[Article], limit: int = 12) -> list[str]:
+    """议题小节开头的观点速览列表。"""
+    bullets: list[str] = []
+    for a in _dedupe_articles(articles):
+        ins = build_article_insight(a)
+        bullets.append(f"- {ins['viewpoint']}")
+        if len(bullets) >= limit:
+            break
+    return bullets
 
 
 def generate_digest_markdown(articles: list[Article], target_date: str) -> str:
@@ -272,6 +565,11 @@ def generate_digest_markdown(articles: list[Article], target_date: str) -> str:
         section_no += 1
         parts.append(f"## {section_no}. {topic_name}")
         parts.append("")
+        bullets = _section_viewpoint_bullets(arts)
+        if bullets:
+            parts.append("**本节观点速览**")
+            parts.extend(bullets)
+            parts.append("")
         for a in arts:
             parts.append(_format_article_block(a))
             parts.append("")
@@ -282,6 +580,11 @@ def generate_digest_markdown(articles: list[Article], target_date: str) -> str:
         section_no += 1
         parts.append(f"## {section_no}. {_OTHER_TOPIC}")
         parts.append("")
+        bullets = _section_viewpoint_bullets(other)
+        if bullets:
+            parts.append("**本节观点速览**")
+            parts.extend(bullets)
+            parts.append("")
         for a in other:
             parts.append(_format_article_block(a))
             parts.append("")
@@ -299,18 +602,23 @@ def extract_topics_from_articles(
 
     def _append_for_topic(topic_name: str, arts: list[Article]) -> None:
         for a in _dedupe_articles(arts):
-            related = json.dumps(
-                [{"title": a.title, "url": (a.url or "").strip() or "#"}],
-                ensure_ascii=False,
-            )
+            ins = build_article_insight(a)
+            url = (a.url or "").strip() or "#"
+            rel_item: dict = {"title": a.title, "url": url}
+            aid = lookup_article_id(a.title, url, target_date)
+            if aid:
+                rel_item["article_id"] = aid
+            related = json.dumps([rel_item], ensure_ascii=False)
             records.append(
                 {
                     "digest_date": target_date,
                     "keyword": topic_name,
-                    "instruments": _extract_varieties(a),
-                    "direction": _direction_judgement(a),
-                    "forecast_cycle": _horizon(a),
-                    "logic": _logic_chain(a),
+                    "actor": ins["actor"],
+                    "viewpoint": ins["viewpoint"],
+                    "instruments": ins["instruments"],
+                    "direction": ins["direction"],
+                    "forecast_cycle": ins["horizon"],
+                    "logic": ins["logic"],
                     "related_articles": related,
                 }
             )
@@ -326,12 +634,14 @@ def extract_topics_from_articles(
 _ARTICLE_BLOCK_RE = re.compile(
     r"###\s*(?:"
     r"文章:\s*(?P<title>[^\n]+)"
-    r"|\[(?P<title_link>[^\]]+)\]\([^)]+\)"
+    r"|\[(?P<title_link>[^\]]+)\]\((?P<title_url>[^)]+)\)"
     r")\n"
     r"(?P<body>.*?)(?=\n###\s*(?:文章:|\[)|\n##\s|\Z)",
     re.DOTALL,
 )
 _FIELD_RE = {
+    "actor": re.compile(r"-\s*\*\*主体\*\*:\s*(.+)", re.MULTILINE),
+    "viewpoint": re.compile(r"-\s*\*\*核心观点\*\*:\s*(.+)", re.MULTILINE),
     "instruments": re.compile(r"-\s*\*\*涉及品种\*\*:\s*(.+)", re.MULTILINE),
     "direction": re.compile(r"-\s*\*\*方向判断\*\*:\s*(.+)", re.MULTILINE),
     "forecast_cycle": re.compile(r"-\s*\*\*预测周期\*\*:\s*(.+)", re.MULTILINE),
@@ -363,11 +673,15 @@ def _topic_row_from_block(
 ) -> dict[str, str]:
     title = (match.group("title") or match.group("title_link") or "").strip()
     body = match.group("body")
-    url_m = _LINK_RE.search(body)
-    url = url_m.group(1).strip() if url_m else "#"
+    url = (match.group("title_url") or "").strip()
+    if not url:
+        url_m = _LINK_RE.search(body)
+        url = url_m.group(1).strip() if url_m else "#"
     row: dict[str, str] = {
         "digest_date": target_date,
         "keyword": keyword,
+        "actor": "",
+        "viewpoint": "",
         "instruments": "",
         "direction": "",
         "forecast_cycle": "",
@@ -400,35 +714,33 @@ def generate_intro_prompt(articles: list[Article], today: str) -> str:
 
     articles_text = ""
     for i, a in enumerate(valid, 1):
+        ins = build_article_insight(a)
         articles_text += f"""
 ### 文章{i}
 - 标题: {a.title}
-- 公众号: {a.account}
-- 原文链接: {a.url}
-- 关键词来源: {a.keyword_found}
-- 正文摘要: {a.content[:800]}
+- 公众号/来源: {a.account}
+- 原文URL: {a.url}
+- 规则预提取主体: {ins['actor']}
+- 规则预提取标的: {ins['instruments']}
+- 规则预提取方向: {ins['direction']}
+- 规则预提取周期: {ins['horizon']}
+- 正文摘要: {(a.content or '')[:800]}
 """
 
-    prompt = f"""你是一个专业的宏观资产配置分析师。请基于以下{len(valid)}篇来自微信公众号的宏观分析文章，生成一份结构化日报。
+    prompt = f"""你是一个专业的宏观资产配置分析师。请基于以下{len(valid)}篇宏观资讯，生成一份结构化日报。
 
 日期: {today}
 
 要求:
-1. 识别出 3-6 个核心议题（跨文章的共同主题）
-2. 每个议题必须包含以下字段：
-   - **关键词**: 3-6 个关键词
-   - **涉及品种**: 所有可交易品种（股票指数、商品、货币、债券、板块等）
-   - **方向判断**: 明确的看多/看空判断
-   - **预测周期**: 短期(1-3月)、中期(3-12月)、长期(1年+)
-   - **分析逻辑链条**: 分步骤列出逻辑推演过程（>=3 步）
-   - **来源文章**: 每篇文章的标题和原文链接，方便读者点击查看
-3. 格式使用 Markdown 的 ### 三级标题
+1. 识别 3-8 个核心议题，每节 `## N. 议题名`，节首可用「本节观点速览」列表
+2. 每条资讯使用 `### [标题](原文URL)`，并包含：
+   - **主体**: 谁（机构/分析师/部门/官方）在表达观点
+   - **核心观点**: 一句话写清「主体 对 标的 持 看多/看空/中性 观点，预测周期 短/中/长期」
+   - **来源**、**内容摘要**、**涉及品种**、**方向判断**、**预测周期**、**分析逻辑**（>=2 步）
+3. 必须区分不同主体的差异化观点；标题用 Markdown 链接，勿另附「原文链接」行
+4. 仅输出 Markdown
 
 {articles_text}
 
-请确保：
-- 逻辑链条清晰、具体、有层次
-- 保留不同来源的差异化观点
-- 来源文章附上完整标题和可点击链接
-- 如果没有足够信息支撑某个议题，不要强行凑数"""
+请确保逻辑具体、保留多空分歧；信息不足时标注「未明示」勿编造。"""
     return prompt

@@ -1,40 +1,38 @@
 ---
 name: minitrader-limitup
-description: >-
-  Fetches A-share limit-up board data via akshare into MiniTrader SQLite, with
-  theme heat stats. Use when the user asks for 涨停复盘, limitup, or akshare integration.
+description: Use when fetching A-share limit-up data, 涨停复盘, theme heat stats, akshare errors, or limitup page shows empty on a trading day.
 ---
 
 # MiniTrader 涨停复盘
-
-## 前置
-
-- 依赖 `akshare`（`uv sync` 已包含）
-- **A 股交易日 15:00 后**数据较完整
 
 ## 命令
 
 ```bash
 uv run minitrader limitup
+# 或一日流程末尾：uv run minitrader all
 ```
 
-或一日流程末尾自动执行：
-
-```bash
-uv run minitrader all
-```
+**交易日 15:00 后**数据较完整。非交易日 0 条正常。
 
 ## 输出
 
-- `minitrader.db` → `limitup_records`、`theme_heat`
-- 前端 `/limitup` 页面展示
+`minitrader.db` → `limitup_records`、`theme_heat`
 
-## 代码位置
+| 字段 | 说明 |
+|------|------|
+| `themes` | akshare「所属行业」（原涨停原因字段已废弃） |
+| `consecutive_days` | 连板数 |
 
-- `src/minitrader/limitup/collector.py`
-- akshare 接口：`stock_zt_pool_em`，日期格式 `YYYYMMDD`
+代码：`limitup/collector.py`，接口 `akshare.stock_zt_pool_em`，日期 `YYYYMMDD`。同日重复运行提示 `already_collected`。
 
-## 注意
+## 前端
 
-- 同日重复运行会提示 `already_collected` 并复用库内数据
-- 非交易日可能返回 0 条，属正常
+- 全局：`/limitup`（日期下拉）
+- 与摘要同日：`/digest/<date>/limitup`
+
+## 常见错误
+
+| 症状 | 处理 |
+|------|------|
+| 0 条 | 非交易日或未收盘；看 CLI 报错 |
+| 题材显示截断 | 行业名来自东财，保留原样 |
